@@ -57,9 +57,6 @@ meta_d = pd.DataFrame(samples)
 ###########  TIME X SUBJECT X FEATURES (GENE EXPRESSION VALUES)
 #############################################################
 
-
-#df_gene_expr.columns = meta_d.iloc[:, 1]
-
 ####################################################
 
 # Extract subject and time from metadata 
@@ -157,22 +154,22 @@ feature_cols = np.array(df_gene_expr.index[0:n_features])
 # All the pre-processing is done now. APply my method of probability kernel estimation
 
 # test and train size
-T = X_sub.shape[0]  # number of timepoints
-train_steps = int(0.8 * T)
+#T = X_sub.shape[0]  # number of timepoints
+#train_steps = int(0.8 * T)
 
 #######3 estimate probabilities
-X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+#X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
 
-X_real = X_sub.copy()
-X_future = estimate_kernel(X_real, X_real_t, X_real_t1, T-train_steps)
+#X_real = X_sub.copy()
+#X_future = estimate_kernel(X_real, X_real_t, X_real_t1, T-train_steps)
 
-np.save("X_real_val.npy", X_real)
-np.save("X_real_pred.npy", X_future)
+np.save("X_real_val.npy", X_sub)
+#np.save("X_real_pred.npy", X_future)
 
 
 #plot_distribution_error(X_real, X_future, 'GSE30550 gene expr',  train_steps,  feature_cols)
 #plot_feature_histograms(X_real, X_future, 'GSE30550 gene expr', time_points=[13, 14, 15])
 
-evaluate_kernel(X_real, X_future, plot=True, biased_unbiased='GSE30550 gene expr', steps_train=train_steps)
+#evaluate_kernel(X_real, X_future, plot=True, biased_unbiased='GSE30550 gene expr', steps_train=train_steps)
 
 aa = 1

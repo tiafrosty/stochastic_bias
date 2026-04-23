@@ -6,13 +6,23 @@ import pandas as pd
 
 # connect my modules
 from kernel_estimation import *
+from geo_data_preprocess import *
 
-                        
+
+###333 do like this: use real data as initial state and match dimensions
+# mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
+dataset_id = 'GSE132741' 
+
+#  load real data, shape [time x Patients x Genes]
+X_real_val = np.load(f"X_real_val_{dataset_id}.npy")
+
+ 
+time_steps, num_paths, state_dim = X_real_val.shape
 # ---------------- parameters ----------------
-state_dim   = 5
-# age is modelled up to a 100 years
-time_steps  = 16 # 100
-num_paths   = 14
+#state_dim   = 5
+## age is modelled up to a 100 years
+#time_steps  = 100 # 100
+#num_paths   = 1000
 
 bias_strength = 40 / time_steps # 400
 drift_strength = 1 #400/time_steps
@@ -50,10 +60,23 @@ def rows_to_tuples(B):
 # ------------------------------------------------------------
 
 # ------------------ Idea 4: store full trajectories ------------------
+
+# iw ant the same initla state
+X0 = np.random.multivariate_normal(
+    mean=np.zeros(state_dim),
+    cov=Sigma,
+    size=num_paths
+)
+
 Xb_hist = np.zeros((time_steps, num_paths, state_dim))
 Xu_hist = np.zeros((time_steps, num_paths, state_dim))
 
-for t in range(time_steps):
+# initialize both processes identicall
+Xb_hist[0] = X_real_val[0]
+Xu_hist[0] = X_real_val[0]
+
+
+for t in range(1, time_steps):
     noise = np.random.multivariate_normal(
         mean=np.zeros(state_dim),
         cov=Sigma,
@@ -65,7 +88,10 @@ for t in range(time_steps):
     # biased process
     mu = X_biased.mean(axis=0)              
     sd = X_biased.std(axis=0, ddof=1)
-    b_t = drift_strength * (mu / (sd + 1e-12))  # drift direction
+    
+    # try different drift approach
+    #b_t = - drift_strength * (X_biased - mu)
+    b_t = drift_strength * (mu / (sd + 1e-12)) # was like this  # drift direction
     # damage (is not needed probably)
     D_t += t
 
@@ -81,11 +107,13 @@ for t in range(time_steps):
     Xu_hist[t] = X_unbiased
     
 
+# normalize 0-1
+Xb_hist[1:] = sigmoid(Xb_hist[1:])
+Xu_hist[1:] = sigmoid(Xu_hist[1:])
+
 ##############  EXPERIMENT 2 ########################33
 ############### TRANSITION PROBABILITY ESTIMATION #####
 tr_step =  int(0.8 * time_steps)
-
-
 
 future_steps = time_steps-tr_step
 
@@ -201,13 +229,13 @@ np.save("X_biased_val.npy", Xb_val)
 np.save("X_biased_pred.npy", Xb_future_all)
 
 
-plot_feature_histograms(Xu_val, Xu_future_all, 'UNBIASED', time_points=[13, 14, 15])
-plot_feature_histograms(Xb_val, Xb_future_all, 'BIASED', time_points=[13, 14, 15])
+#plot_feature_histograms(Xu_val, Xu_future_all, 'UNBIASED', time_points=[13, 14, 15])
+#plot_feature_histograms(Xb_val, Xb_future_all, 'BIASED', time_points=[13, 14, 15])
 
 # check accuracy    
 
-plot_distribution_error(Xb_val, Xb_future_all, 'BIASED',  steps_train, ['f1', 'f2', 'f3', 'f4', 'f5'])
-kernel_acc_b = evaluate_kernel(Xb_val, Xb_future_all, True, 'BIASED', steps_train)
+#plot_distribution_error(Xb_val, Xb_future_all, 'BIASED',  steps_train, ['f1', 'f2', 'f3', 'f4', 'f5'])
+#kernel_acc_b = evaluate_kernel(Xb_val, Xb_future_all, True, 'BIASED', steps_train)
 
 aa = 1
 
