@@ -57,12 +57,13 @@ def estimate_kernel(Xb_hist, Xb_t, Xb_t1, future_steps):
     ############## ...DONE ######################
 
     # test and train size
-    steps_train = Xb_hist.shape[0]-future_steps
+    steps_train = int(0.8 * Xb_hist.shape[0]) # Xb_hist.shape[0]-future_steps
     #Xb_future = generate_future_states(Xu_hist, 0, Sigma_u_hat)
 
     #Xb_val = Xb_hist.copy() #[80:]
-    Xb_future_all = Xb_hist.copy()
-    Xb_future_all[steps_train:] = Xb_future
+    #Xb_future_all = Xb_hist.copy()
+    #Xb_future_all[:steps_train]+
+    Xb_future_all = np.concatenate([Xb_hist[:steps_train], Xb_future])
     
     return Xb_future_all
 

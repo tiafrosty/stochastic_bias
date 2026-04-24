@@ -31,7 +31,9 @@ genes_table = get_extracted_table(dataset_id, 'txt')
 #####33 prepocess: (ofc i have to do it separately AGAIN for each dataset oh well)
 actual_data = genes_table 
 #######3 normalize to get relative percentage 
-actual_data =  sigmoid(actual_data) #(actual_data - actual_data.min()) / (actual_data.max() - actual_data.min())
+###########3 was sigmoid but its all large and positive so minmax is better
+actual_data = minmax(actual_data)
+#actual_data =  sigmoid(actual_data) #(actual_data - actual_data.min()) / (actual_data.max() - actual_data.min())
 #actual_data = actual_data.div(actual_data.sum(axis=1), axis=0) * 100
 
 actual_data.index = actual_data.index.str.split("_").str[0]
@@ -81,6 +83,26 @@ n_features = 5
 X_sub = X[:, :, np.arange(n_features)]
 
 
+# try this: predict like 50 states, then we have more time points
+# look at the long term run
+#######3 estimate probabilities
+train_steps = int(0.8 * X_sub.shape[0])
+
+
+X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+
+
 np.save(f"X_real_val_{dataset_id}.npy" , X_sub)
+np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
+
+
+####### try takking more features
+X_sub = X[:, :, np.arange(70)]
+train_steps = int(0.8 * X_sub.shape[0])
+X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+X_real_pred_large = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+
+np.save(f"X_real_pred_large_{dataset_id}.npy" , minmax(X_real_pred_large))
 
 aa = 1

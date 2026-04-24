@@ -20,11 +20,16 @@ train_steps = int(0.8 * T)
 
 
 #######3 estimate probabilities
-X_real_t, X_real_t1 = make_pairs(X_real_val[:train_steps])
-X_real_pred = estimate_kernel(X_real_val, X_real_t, X_real_t1, T-train_steps)
+#X_real_t, X_real_t1 = make_pairs(X_real_val[:train_steps])
+#X_real_pred = estimate_kernel(X_real_val, X_real_t, X_real_t1, T-train_steps)
 
-aa = 1
+#aa = 1
 #X_real_pred = np.load("X_real_pred.npy")
+
+# just a fix, remove later
+X_real_val = np.load(f"X_real_pred_large_{dataset_id}.npy")
+T, n_obs, n_features = X_real_val.shape  # number of timepoints
+train_steps = int(0.8 * T)
 
 
 # for the simulated data, we match the data shape exactly with the real data.
@@ -74,12 +79,11 @@ visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_
 
 visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real = evaluate_exploration(X_real_val)
 
-#bias_plots_without_real_data(
-##    X_biased_val,
-  #  visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased,
-  #  visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,
-#)
-
+bias_plots_without_real_data(
+    X_biased_val,
+    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased,
+   visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,
+)
 
 ########3 PLOT ###############
 

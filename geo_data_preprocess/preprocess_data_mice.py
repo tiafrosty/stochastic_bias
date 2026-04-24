@@ -12,6 +12,9 @@ from kernel_estimation import *
 def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
+def minmax(x):
+    return (x - x.min()) / (x.max() - x.min())
+
 
 def get_metadata(family_soft_name,  series_matrix_name):
 

@@ -24,7 +24,7 @@ time_steps, num_paths, state_dim = X_real_val.shape
 #time_steps  = 100 # 100
 #num_paths   = 1000
 
-bias_strength = 40 / time_steps # 400
+bias_strength = 100 / time_steps # 400
 drift_strength = 1 #400/time_steps
 noise_scale   = 1.0 / state_dim
 # -------------------------------------------
