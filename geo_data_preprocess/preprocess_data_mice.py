@@ -105,3 +105,43 @@ def get_extracted_table(data_id, data_extension):
     df_all.index = [f.split("/")[-1].replace(".csv", "") for f in files]
     
     return df_all
+
+
+def get_extracted_table_cgmap(data_id, data_extension):
+    '''
+    takes 2 files, data_extension is like txt or csv
+    '''
+
+    files = glob.glob(f"extracted_{data_id}/*.{data_extension}")
+    #files = glob.glob("extracted/*.csv")
+
+    # sort them, rn its a mess
+    files = sorted(files, key=lambda x: int(x.split("GSM")[1].split("_")[0]))
+
+    rows = []
+    sample_names = None
+
+    for f in tqdm(files, desc="Processing"):
+ 
+        if data_extension == 'txt':
+            df = pd.read_csv(f, sep = '\s+')
+        else:
+            df = pd.read_csv(f)
+        
+        # first column = gene IDs, second = expression
+        if sample_names is None:
+            sample_names = df.iloc[:, 0]  # gene IDs
+        
+        # if its a csv, then most likely its 2 columns
+        data_col_ind = len(df.columns) - 1
+        expr = df.iloc[:, 1].values  # expression column
+        
+        rows.append(expr)
+
+    # build dataframe
+    df_all = pd.DataFrame(rows, columns=sample_names)
+
+    # set index as sample names
+    df_all.index = [f.split("/")[-1].replace(".csv", "") for f in files]
+    
+    return df_all
