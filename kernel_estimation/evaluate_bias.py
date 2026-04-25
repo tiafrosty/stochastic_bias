@@ -12,7 +12,7 @@ def bin_states(X, bin_width):
     return np.floor(X / bin_width).astype(np.int64)
 
 
-n_grid = 100
+n_grid = 50
 # Discretization idea 2
 def discretize(X):
     return np.round(X * (n_grid - 1)).astype(int)
@@ -47,10 +47,13 @@ def evaluate_exploration(X_biased):
     new_bins_biased = np.zeros(time_steps, dtype=int)
 
     # ------------------ NEW IDEA: global min/max 
+    ##### not global tho but avereged over observations 
     global_min_biased = np.zeros(time_steps)
     global_max_biased = np.zeros(time_steps)
 
     global_range_biased = np.zeros(time_steps)
+
+    entropy_time_steps = np.zeros(time_steps)
 
     for t in range(time_steps):
         
@@ -73,34 +76,40 @@ def evaluate_exploration(X_biased):
             total_new += states_i
         
         new_bins_biased[t] = total_new
-        visited_size_biased[t] = sum(len(v) for v in visited_biased)
+        if t > 0:
+
+            visited_size_biased[t] = sum(len(v) for v in visited_biased)
         
         # ---- Idea 1 & 2: visited-set size + EXPLORATION curves ---
         # # Obs! I chaneghd discreteization method
         #bins_b = rows_to_tuples(bin_states(X_biased[t], bin_width)) # W was like this
         # new one
         
-        #bins_b = rows_to_tuples(discretize(X_biased[t]))
-        #prev_b = len(visited_biased)
-
-        #visited_biased |= bins_b
-
-        #visited_size_biased[t] = len(visited_biased)  # +=
-
-        #new_bins_biased[t] = visited_size_biased[t] - prev_b
-        
         # ------------------ NEW IDEA 3: track global min/max each step
-        global_min_biased[t] = np.min(X_biased[t])
-        global_max_biased[t] = np.max(X_biased[t])
+        ### change and take average over observations then min and max
+        global_min_biased[t] = np.min(np.mean(X_biased[t], axis = 0))
+        global_max_biased[t] = np.max(np.mean(X_biased[t], axis = 0))
 
         global_range_biased[t] = global_max_biased[t] - global_min_biased[t]
-        # -----------------------------------------------------------------------------
+        # ------------------------------------------------------------------
+
+        ###### entropy 
+        # flatten all observations + features
+        vals = B.flatten()
+
+        # count frequencies
+        unique, counts = np.unique(vals, return_counts=True)
+        p = counts / counts.sum()
+
+        # entropy (add small eps for stability)
+        eps = 1e-12
+        entropy_time_steps[t] = -np.sum(p * np.log(p + eps))
         
     mean_biased   = X_biased.mean(axis=1)
     var_biased  = X_biased.var(axis=1, ddof=1)
     
     # fix the first element in exploration
-    visited_size_biased[0] = visited_size_biased[1]
+    #visited_size_biased[0] = visited_size_biased[1]
         
-    return visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased
+    return visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_time_steps
     

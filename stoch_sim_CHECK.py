@@ -13,10 +13,13 @@ SEED = 42
 
 ###333 do like this: use real data as initial state and match dimensions
 # mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
-dataset_id = 'GSE132741' 
+#dataset_id = 'GSE132741' 
+
+# rats 
+dataset_id = 'GSE161141' 
 
 #  load real data, shape [time x Patients x Genes]
-X_real_val = np.load(f"X_real_pred_large_{dataset_id}.npy")
+X_real_val = np.load(f"X_real_val_{dataset_id}.npy")
 
  
 time_steps, num_paths, state_dim = X_real_val.shape
@@ -26,7 +29,7 @@ time_steps, num_paths, state_dim = X_real_val.shape
 #time_steps  = 100 # 100
 #num_paths   = 1000
 
-bias_strength = 40 / time_steps # 400
+bias_strength = 60 / time_steps # 400
 drift_strength = 1 #400/time_steps
 noise_scale   = 1.0 / state_dim
 # -------------------------------------------

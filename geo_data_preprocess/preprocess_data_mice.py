@@ -107,9 +107,9 @@ def get_extracted_table(data_id, data_extension):
     return df_all
 
 
-def get_extracted_table_cgmap(data_id, data_extension):
+def get_extracted_table_cgmap(data_id, data_extension, n_selected_genes):
     '''
-    takes 2 files, data_extension is like txt or csv
+    extracts CGmap data for selected genes
     '''
 
     files = glob.glob(f"extracted_{data_id}/*.{data_extension}")
@@ -121,20 +121,27 @@ def get_extracted_table_cgmap(data_id, data_extension):
     rows = []
     sample_names = None
 
+    cols = [
+    "chr", "base", "pos", "context", "dinuc",
+    "meth_ratio", "meth_count", "coverage"
+    ]
+
     for f in tqdm(files, desc="Processing"):
  
-        if data_extension == 'txt':
-            df = pd.read_csv(f, sep = '\s+')
-        else:
-            df = pd.read_csv(f)
-        
+        df = pd.read_csv(
+        f,
+        sep="\t",
+        header=None,
+        names=cols,
+    )
+    
         # first column = gene IDs, second = expression
         if sample_names is None:
-            sample_names = df.iloc[:, 0]  # gene IDs
+            sample_names = df.iloc[:, 0][:n_selected_genes]  # gene IDs
         
         # if its a csv, then most likely its 2 columns
         data_col_ind = len(df.columns) - 1
-        expr = df.iloc[:, 1].values  # expression column
+        expr = np.array(df['meth_ratio'][:n_selected_genes]) #df.iloc[:, 1].values  # expression column
         
         rows.append(expr)
 
@@ -143,5 +150,7 @@ def get_extracted_table_cgmap(data_id, data_extension):
 
     # set index as sample names
     df_all.index = [f.split("/")[-1].replace(".csv", "") for f in files]
+
+    df_all.to_csv("df_rats.csv")
     
     return df_all

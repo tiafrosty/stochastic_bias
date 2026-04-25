@@ -9,7 +9,10 @@ from kernel_estimation import *
 
 ##
 # mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
-dataset_id = 'GSE132741' 
+#dataset_id = 'GSE132741' 
+
+# rats methylation, 1.5-35 months,  ~5 observationsper time  point
+dataset_id = 'GSE161141' 
 
 #  load real data, shape [time x Patients x Genes]
 X_real_val = np.load(f"X_real_val_{dataset_id}.npy")
@@ -27,9 +30,9 @@ train_steps = int(0.8 * T)
 #X_real_pred = np.load("X_real_pred.npy")
 
 # just a fix, remove later
-X_real_val = np.load(f"X_real_pred_large_{dataset_id}.npy")
-T, n_obs, n_features = X_real_val.shape  # number of timepoints
-train_steps = int(0.8 * T)
+#X_real_val = np.load(f"X_real_pred_large_{dataset_id}.npy")
+#T, n_obs, n_features = X_real_val.shape  # number of timepoints
+#train_steps = int(0.8 * T)
 
 
 # for the simulated data, we match the data shape exactly with the real data.
@@ -73,25 +76,25 @@ aa = 1
 
 #33333333333333333333 evalute the effect of bias and check global sprad 
 
-visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased = evaluate_exploration(X_biased_val)
+visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased = evaluate_exploration(X_biased_val)
 
-visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased = evaluate_exploration(X_unbiased_val)
+visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,  entropy_unbiased = evaluate_exploration(X_unbiased_val)
 
-visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real = evaluate_exploration(X_real_val)
+visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real,  entropy_real = evaluate_exploration(X_real_val)
 
 bias_plots_without_real_data(
     X_biased_val,
-    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased,
-   visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,
+    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
+   visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased
 )
 
 ########3 PLOT ###############
 
 all_bias_plots(
     X_biased_val,
-    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased,
-    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,
-    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real
+    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
+    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,entropy_unbiased,
+    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real, entropy_real
 )
 
 aa = 1
