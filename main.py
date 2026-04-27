@@ -40,8 +40,8 @@ train_steps = int(0.8 * T)
 
 X_biased_val = np.load("X_biased_val.npy")[0:T][:, np.arange(n_obs)[:, None], np.arange(n_features)]
 
-X_biased_t, X_biased_t1 = make_pairs(X_biased_val[:train_steps])
-X_biased_pred = estimate_kernel(X_biased_val, X_biased_t, X_biased_t1, T-train_steps)
+#X_biased_t, X_biased_t1 = make_pairs(X_biased_val[:train_steps])
+#X_biased_pred = estimate_kernel_biased(X_biased_val, X_biased_t, X_biased_t1, T-train_steps)
 
 #X_biased_pred = np.load("X_biased_pred.npy")
 
@@ -49,13 +49,13 @@ X_biased_pred = estimate_kernel(X_biased_val, X_biased_t, X_biased_t1, T-train_s
 X_unbiased_val = np.load("X_unbiased_val.npy")[0:T][:, np.arange(n_obs)[:, None], np.arange(n_features)]
 
 #X_unbiased_pred = np.load("X_unbiased_pred.npy")
-X_unbiased_t, X_unbiased_t1 = make_pairs(X_unbiased_val[:train_steps])
-X_unbiased_pred = estimate_kernel(X_unbiased_val, X_unbiased_t, X_unbiased_t1, T-train_steps)
+#X_unbiased_t, X_unbiased_t1 = make_pairs(X_unbiased_val[:train_steps])
+#X_unbiased_pred = estimate_kernel_unbiased(X_unbiased_val, X_unbiased_t, X_unbiased_t1, T-train_steps)
 
 
 ## set up the shape of the states
-time_steps, n_paths, n_dim = X_biased_val.shape #time_steps, n_paths, n_dim = X_real_val.shape
-train_steps = int(0.8 * time_steps)
+#time_steps, n_paths, n_dim = X_biased_val.shape #time_steps, n_paths, n_dim = X_real_val.shape
+#train_steps = int(0.8 * time_steps)
 
 
 # real 
@@ -82,19 +82,37 @@ visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_
 
 visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real,  entropy_real = evaluate_exploration(X_real_val)
 
-bias_plots_without_real_data(
-    X_biased_val,
-    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
-   visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased
-)
+#bias_plots_without_real_data(
+#    X_biased_val,
+#    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
+#   visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased
+#)
 
 ########3 PLOT ###############
 
-all_bias_plots(
-    X_biased_val,
-    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
-    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,entropy_unbiased,
-    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real, entropy_real
-)
+#all_bias_plots(
+#    X_biased_val,
+#    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
+#    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,entropy_unbiased,
+#    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real, entropy_real
+#)
+
+
+####### Part 2: evaluate kenrel accuracy
+#### we estimate kernel using 2 approaches: biased and unbiased.
+### then from the last observed states in the train set, we generate trajectories using both apporahces.
+## then validate using real data and see which one captures the dynamics better
+
+future_steps = T - train_steps
+X_real_t, X_real_t1 = make_pairs(X_real_val[:train_steps])
+#X_real_pred = estimate_kernel(X_real_val, X_real_t, X_real_t1, T-train_steps)
+X_pred_biased = estimate_kernel_biased(X_real_val, X_real_t, X_real_t1, future_steps)
+
+X_pred_unbiased = estimate_kernel_unbiased(X_real_val, X_real_t, X_real_t1, future_steps)
 
 aa = 1
+
+evaluate_kernel_3plots(X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps)
+
+
+plot_feature_histograms_3plots(X_real_val, X_pred_biased, X_pred_unbiased, time_points=np.arange(train_steps+1,train_steps+4), bins=30)

@@ -63,6 +63,79 @@ def plot_feature_histograms(X_val, X_sim, biased_unbiased, time_points=[80, 90, 
         #plt.tight_layout()
         #plt.show()
         
+def plot_feature_histograms_3plots(X_val, X_sim_biased, X_sim_unbiased, time_points=[80, 90, 99], bins=30):
+    """
+    Compare per-feature empirical distributions using histograms.
+
+    X_val, X_sim_biased, X_sim_unbiased: shape (T, num_paths, d)
+    time_points: list of time indices to plot
+    """
+    T, num_paths, d = X_val.shape
+    colors = plt.cm.tab10(np.arange(d))
+
+    n_rows = len(time_points)
+    n_cols = d
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(3 * n_cols, 3 * n_rows),
+        squeeze=False
+    )
+
+    for i, t in enumerate(time_points):
+        for j in range(d):
+            ax = axes[i, j]
+
+            real_vals = X_val[t, :, j]
+            biased_vals = X_sim_biased[t, :, j]
+            unbiased_vals = X_sim_unbiased[t, :, j]
+
+            ax.hist(
+                real_vals,
+                bins=bins,
+                density=True,
+                alpha=0.45,
+                color=colors[j],
+                label="real"
+            )
+
+            ax.hist(
+                biased_vals,
+                bins=bins,
+                density=True,
+                histtype="step",
+                linewidth=2,
+                color=colors[j],
+                linestyle="-",
+                label="predicted biased"
+            )
+
+            ax.hist(
+                unbiased_vals,
+                bins=bins,
+                density=True,
+                histtype="step",
+                linewidth=2,
+                color=colors[j],
+                linestyle="--",
+                label="predicted unbiased"
+            )
+
+            if i == 0:
+                ax.set_title(f"Feature {j+1}", fontsize=12)
+
+            if j == 0:
+                ax.set_ylabel(f"t = {t}", fontsize=12)
+
+            ax.tick_params(labelsize=10)
+            ax.legend(fontsize=8)
+
+    fig.suptitle("Feature distributions at selected time points", fontsize=16)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
+
+
 
 def plot_distribution_error(X_val, X_sim, biased_unbiased, steps_train, feature_names):
     def wasserstein_per_feature(X_val, X_sim):
