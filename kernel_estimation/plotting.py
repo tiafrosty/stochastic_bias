@@ -5,6 +5,8 @@ from scipy.stats import wasserstein_distance
 import pandas as pd
 import math
 
+import os
+
 
 def plot_feature_histograms(X_val, X_sim, biased_unbiased, time_points=[80, 90, 99], bins=30):
     """
@@ -63,13 +65,18 @@ def plot_feature_histograms(X_val, X_sim, biased_unbiased, time_points=[80, 90, 
         #plt.tight_layout()
         #plt.show()
         
-def plot_feature_histograms_3plots(X_val, X_sim_biased, X_sim_unbiased, time_points=[80, 90, 99], bins=30):
+def plot_feature_histograms_3plots(
+    X_val, X_sim_biased, X_sim_unbiased,
+    time_points=[80, 90, 99], bins=30,
+    save_dir="plots"
+):
     """
     Compare per-feature empirical distributions using histograms.
 
     X_val, X_sim_biased, X_sim_unbiased: shape (T, num_paths, d)
-    time_points: list of time indices to plot
     """
+    os.makedirs(save_dir, exist_ok=True)
+
     T, num_paths, d = X_val.shape
     colors = plt.cm.tab10(np.arange(d))
 
@@ -90,36 +97,18 @@ def plot_feature_histograms_3plots(X_val, X_sim_biased, X_sim_unbiased, time_poi
             biased_vals = X_sim_biased[t, :, j]
             unbiased_vals = X_sim_unbiased[t, :, j]
 
-            ax.hist(
-                real_vals,
-                bins=bins,
-                density=True,
-                alpha=0.45,
-                color=colors[j],
-                label="real"
-            )
+            ax.hist(real_vals, bins=bins, density=True,
+                    alpha=0.45, color=colors[j], label="real")
 
-            ax.hist(
-                biased_vals,
-                bins=bins,
-                density=True,
-                histtype="step",
-                linewidth=2,
-                color=colors[j],
-                linestyle="-",
-                label="predicted biased"
-            )
+            ax.hist(biased_vals, bins=bins, density=True,
+                    histtype="step", linewidth=2,
+                    color=colors[j], linestyle="-",
+                    label="predicted biased")
 
-            ax.hist(
-                unbiased_vals,
-                bins=bins,
-                density=True,
-                histtype="step",
-                linewidth=2,
-                color=colors[j],
-                linestyle="--",
-                label="predicted unbiased"
-            )
+            ax.hist(unbiased_vals, bins=bins, density=True,
+                    histtype="step", linewidth=2,
+                    color=colors[j], linestyle="--",
+                    label="predicted unbiased")
 
             if i == 0:
                 ax.set_title(f"Feature {j+1}", fontsize=12)
@@ -133,6 +122,7 @@ def plot_feature_histograms_3plots(X_val, X_sim_biased, X_sim_unbiased, time_poi
     fig.suptitle("Feature distributions at selected time points", fontsize=16)
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(os.path.join(save_dir, "feature_histograms.png"), dpi=300)
     plt.show()
 
 

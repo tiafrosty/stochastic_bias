@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 
 def all_bias_plots(
     X_b,
-    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased,
-    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased,
-    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real, entropy_real
+    visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased, var_t_biased,
+    visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased, var_t_unbiased,
+    visited_size_real, mean_real, var_real, global_min_real, global_max_real, global_range_real, new_bins_real, entropy_real, var_t_real
 ):
     import numpy as np
     import matplotlib.pyplot as plt
@@ -160,6 +160,104 @@ def all_bias_plots(
     plt.tight_layout()
     plt.savefig('entropy.png', dpi=300, bbox_inches="tight")
     plt.show()
+
+
+    # ---------------- Mean squared temporal change ----------------
+    plt.figure(figsize=(9, 5), dpi=120)
+
+    tgrid_var = np.arange(1, len(var_t_biased) + 1)
+
+    plt.plot(tgrid_var, var_t_biased, "-",  label="Biased", lw=2)
+    plt.plot(tgrid_var, var_t_unbiased, ":", label="Unbiased", lw=3)
+    plt.plot(tgrid_var, var_t_real, "--", label="Real", lw=2)
+
+    plt.xlabel("Time step", fontsize=label_xy_size)
+    plt.ylabel("Mean squared change", fontsize=label_xy_size)
+    plt.xticks(fontsize=xy_tick_size)
+    plt.yticks(fontsize=xy_tick_size)
+    plt.title("Temporal variation between states", fontsize=title_size)
+
+    plt.grid(True, alpha=0.4)
+    plt.legend(loc="best", fontsize=legend_font)
+
+    plt.tight_layout()
+    plt.savefig("temporal-variation.png", dpi=300, bbox_inches="tight")
+    plt.show()
+
+    # ---------------- Combined 2x2 panel ----------------
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10), dpi=120)
+
+    lw = 3.5
+    label_size = 16
+    title_size = 20
+    tick_size = 14
+
+    # ---- 1. Visited-set growth ----
+    ax = axes[0, 0]
+    tgrid = np.arange(1, time_steps + 1)
+
+    ax.plot(tgrid, visited_size_biased, "-", lw=lw, label="Biased")
+    ax.plot(tgrid, visited_size_unbiased, ":", lw=lw, label="Unbiased")
+    ax.plot(tgrid, visited_size_real, "--", lw=lw, label="Real")
+
+    ax.set_title("Visited-state growth", fontsize=title_size)
+    ax.set_xlabel("Time step", fontsize=label_size)
+    ax.set_ylabel("Unique states", fontsize=label_size)
+    ax.tick_params(labelsize=tick_size)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=13)
+
+
+    # ---- 2. Exploration rate ----
+    ax = axes[0, 1]
+
+    ax.plot(tgrid, new_bins_biased, "-", lw=lw, label="Biased")
+    ax.plot(tgrid, new_bins_unbiased, ":", lw=lw, label="Unbiased")
+    ax.plot(tgrid, new_bins_real, "--", lw=lw, label="Real")
+
+    ax.set_title("Exploration rate", fontsize=title_size)
+    ax.set_xlabel("Time step", fontsize=label_size)
+    ax.set_ylabel("# new states", fontsize=label_size)
+    ax.tick_params(labelsize=tick_size)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=13)
+
+
+    # ---- 3. Entropy ----
+    ax = axes[1, 0]
+
+    ax.plot(tgrid, entropy_biased, "-", lw=lw, label="Biased")
+    ax.plot(tgrid, entropy_unbiased, ":", lw=lw, label="Unbiased")
+    ax.plot(tgrid, entropy_real, "--", lw=lw, label="Real")
+
+    ax.set_title("Entropy", fontsize=title_size)
+    ax.set_xlabel("Time step", fontsize=label_size)
+    #ax.set_ylabel("Entropy", fontsize=label_size)
+    ax.tick_params(labelsize=tick_size)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=13)
+
+
+    # ---- 4. Temporal variation ----
+    ax = axes[1, 1]
+    tgrid_var = np.arange(1, len(var_t_biased) + 1)
+
+    ax.plot(tgrid_var, var_t_biased, "-", lw=lw, label="Biased")
+    ax.plot(tgrid_var, var_t_unbiased, ":", lw=lw, label="Unbiased")
+    ax.plot(tgrid_var, var_t_real, "--", lw=lw, label="Real")
+
+    ax.set_title("Temporal variation", fontsize=title_size)
+    ax.set_xlabel("Time step", fontsize=label_size)
+    #ax.set_ylabel("Mean squared change", fontsize=label_size)
+    ax.tick_params(labelsize=tick_size)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=13)
+
+
+    # ---- Final layout ----
+    plt.tight_layout()
+    plt.savefig("combined_dynamics_panel.png", dpi=300, bbox_inches="tight")
+    plt.show()
         
     
 
@@ -303,3 +401,6 @@ def bias_plots_without_real_data(
     plt.tight_layout()
     plt.savefig('entropy.png', dpi=300, bbox_inches="tight")
     plt.show()
+
+
+    

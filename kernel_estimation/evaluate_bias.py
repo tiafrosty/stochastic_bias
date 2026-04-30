@@ -107,9 +107,10 @@ def evaluate_exploration(X_biased):
         
     mean_biased   = X_biased.mean(axis=1)
     var_biased  = X_biased.var(axis=1, ddof=1)
-    
+
+    variation_t = np.mean((X_biased[1:] - X_biased[:-1])**2, axis=(1,2))  
     # fix the first element in exploration
     #visited_size_biased[0] = visited_size_biased[1]
         
-    return visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_time_steps
+    return visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_time_steps, variation_t
     

@@ -4,6 +4,10 @@ from scipy.spatial.distance import cdist
 from scipy.stats import wasserstein_distance
 import pandas as pd
 
+import os
+
+from geo_data_preprocess import *
+
 def make_pairs(X_hist):
     state_dim = X_hist.shape[2]
     # X_hist has shape (time_steps, num_paths, state_dim)
@@ -12,12 +16,12 @@ def make_pairs(X_hist):
     return X_t, X_t1
 
 
-def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps):
+def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps, seed = None):
     
     ########33 BIASED KERNEL  #####3
 ####3 learn the avergae change using linear regression
 ###############################3
-
+    rng = np.random.default_rng(seed)
     X_design = np.hstack([np.ones((Xb_t.shape[0], 1)), Xb_t])   # shape (N, 1+d)
 
     # fit linear regression (least-squares) for all outputs
@@ -46,13 +50,13 @@ def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps):
 
     for t in range(future_steps):
         mean_next = m_hat(Xb_current)  # shape (num_paths, state_dim)
-        noise_b = np.random.multivariate_normal(
+        noise_b = rng.multivariate_normal(
             mean=np.zeros(state_dim),
             cov=Sigma_b_hat,
             size=num_paths
         )
         Xb_current = mean_next + noise_b
-        Xb_future[t] = Xb_current
+        Xb_future[t] = np.clip(Xb_current, 0, 1)
 
     ############## ...DONE ######################
 
@@ -68,7 +72,7 @@ def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps):
     return Xb_future_all
 
 
-def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps):
+def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps, seed=None):
         # ============================================================
     # 1) UNBIASED KERNEL
     # Model:
@@ -85,22 +89,23 @@ def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps):
 
     # Generate future unbiased trajectories starting from last observed state
     def generate_future_states(Xu_hist, sigma_hat):
+        rng = np.random.default_rng(seed)
+
+        num_paths, state_dim = Xu_hist.shape[1], Xu_hist.shape[2]
+
         Xu_future = np.zeros((future_steps, num_paths, state_dim))
         Xu_current = Xu_hist[-1].copy()
 
         for h in range(future_steps):
-            Xu_next = np.zeros_like(Xu_current)
-            
-            for i in range(num_paths):
-                np.random.seed(i)
-                Xu_next[i] = np.random.multivariate_normal(
-                    mean=Xu_current[i],
-                    cov=sigma_hat
-                )
-            
-            Xu_current = Xu_next
-            Xu_future[h] = Xu_current
-            
+            noise = rng.multivariate_normal(
+                mean=np.zeros(state_dim),
+                cov=sigma_hat,
+                size=num_paths
+            )
+
+            Xu_current = Xu_current + noise
+            Xu_future[h] = np.clip(Xu_current, 0, 1)
+
         return Xu_future
     
     # test and train size
@@ -272,8 +277,10 @@ def evaluate_kernel(X_val, X_sim, plot=True, biased_unbiased = 'b', steps_train 
         }
     
 
-def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80):
+def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots"):
     T, num_paths, d = X_val.shape
+
+    os.makedirs(save_dir, exist_ok=True)
 
     mean_error_biased = np.zeros(T)
     cov_error_biased  = np.zeros(T)
@@ -284,11 +291,9 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
     frob_error_unbiased = np.zeros(T)
 
     for t in range(T):
-        # ---- real ----
         mu_val = X_val[t].mean(axis=0)
         cov_val = np.cov(X_val[t], rowvar=False)
 
-        # ---- biased ----
         mu_biased = X_sim_biased[t].mean(axis=0)
         cov_biased = np.cov(X_sim_biased[t], rowvar=False)
 
@@ -296,7 +301,6 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
         cov_error_biased[t] = np.linalg.norm(cov_val - cov_biased, ord="fro")
         frob_error_biased[t] = np.linalg.norm(X_val[t] - X_sim_biased[t], ord="fro")
 
-        # ---- unbiased ----
         mu_unbiased = X_sim_unbiased[t].mean(axis=0)
         cov_unbiased = np.cov(X_sim_unbiased[t], rowvar=False)
 
@@ -310,25 +314,15 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
 
         # -------- error plot --------
         plt.figure(figsize=(10, 6))
-
         plt.plot(t_axis, mean_error_biased, linewidth=3, label="Mean error: predicted biased")
         plt.plot(t_axis, cov_error_biased, linewidth=3, label="Cov error: predicted biased")
-
         plt.plot(t_axis, mean_error_unbiased, linewidth=3, linestyle="--", label="Mean error: predicted unbiased")
         plt.plot(t_axis, cov_error_unbiased, linewidth=3, linestyle="--", label="Cov error: predicted unbiased")
-
         plt.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black", label="Train/Test split")
-
-        plt.xlabel("Time", fontsize=16)
-        plt.ylabel("Error", fontsize=16)
-        plt.title("Errors over time", fontsize=18)
-
-        plt.legend(fontsize=12)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
-        plt.grid(alpha=0.3)
-
+        plt.xlabel("Time"); plt.ylabel("Error"); plt.title("Errors over time")
+        plt.legend(); plt.grid(alpha=0.3)
         plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "errors.png"), dpi=300)
         plt.show()
 
         # -------- per-feature means --------
@@ -337,126 +331,50 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
         mean_unbiased = X_sim_unbiased.mean(axis=1)
 
         plt.figure(figsize=(10, 6))
-
         for j in range(d):
-            plt.plot(
-                mean_val[:, j],
-                linestyle="-",
-                linewidth=2.5,
-                color=colors[j],
-                label=f"real f{j+1}"
-            )
-
-            plt.plot(
-                mean_biased[:, j],
-                linestyle="--",
-                linewidth=2.5,
-                color=colors[j],
-                label=f"predicted biased f{j+1}"
-            )
-
-            plt.plot(
-                mean_unbiased[:, j],
-                linestyle=":",
-                linewidth=2.5,
-                color=colors[j],
-                label=f"predicted unbiased f{j+1}"
-            )
-
-        plt.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black", label="Train/Test split")
-
-        plt.xlabel("Time", fontsize=16)
-        plt.ylabel("Mean", fontsize=16)
-        plt.title("Per-feature mean trajectories", fontsize=18)
-
-        plt.legend(fontsize=10, ncol=2)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
-        plt.grid(alpha=0.3)
-
+            plt.plot(mean_val[:, j], "-", color=colors[j], label=f"real f{j+1}")
+            plt.plot(mean_biased[:, j], "--", color=colors[j], label=f"predicted biased f{j+1}")
+            plt.plot(mean_unbiased[:, j], ":", color=colors[j], label=f"predicted unbiased f{j+1}")
+        plt.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black")
+        plt.xlabel("Time"); plt.ylabel("Mean"); plt.title("Per-feature mean trajectories")
+        plt.legend(ncol=2, fontsize=10); plt.grid(alpha=0.3)
         plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "means.png"), dpi=300)
         plt.show()
 
         # -------- Frobenius norm --------
         plt.figure(figsize=(10, 6))
-
         plt.plot(t_axis, frob_error_biased, linewidth=3, label="Predicted biased")
         plt.plot(t_axis, frob_error_unbiased, linewidth=3, linestyle="--", label="Predicted unbiased")
-
-        plt.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black", label="Train/Test split")
-
-        plt.xlabel("Time", fontsize=16)
-        plt.ylabel(r"$\|X_{\mathrm{real}} - X_{\mathrm{pred}}\|_F$", fontsize=16)
-        plt.title("Matrix difference over time", fontsize=18)
-
-        plt.legend(fontsize=14)
-        plt.xticks(fontsize=12)
-        plt.yticks(fontsize=12)
-        plt.grid(alpha=0.3)
-
+        plt.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black")
+        plt.xlabel("Time"); plt.ylabel(r"$\|X_{\mathrm{real}} - X_{\mathrm{pred}}\|_F$")
+        plt.title("Matrix difference over time")
+        plt.legend(); plt.grid(alpha=0.3)
         plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "frob.png"), dpi=300)
         plt.show()
 
-        # -------- individual trajectories: first 9 observations --------
+        # -------- individual trajectories --------
         n_show = min(9, num_paths)
-
         fig, axes = plt.subplots(3, 3, figsize=(16, 14), sharex=True)
         axes = axes.flatten()
 
         for i in range(n_show):
             ax = axes[i]
-
             for j in range(d):
-                ax.plot(
-                    t_axis,
-                    X_val[:, i, j],
-                    linestyle="-",
-                    linewidth=1.8,
-                    color=colors[j],
-                    label=f"real f{j+1}" if i == 0 else None
-                )
-
-                ax.plot(
-                    t_axis,
-                    X_sim_biased[:, i, j],
-                    linestyle="--",
-                    linewidth=1.8,
-                    color=colors[j],
-                    label=f"predicted biased f{j+1}" if i == 0 else None
-                )
-
-                ax.plot(
-                    t_axis,
-                    X_sim_unbiased[:, i, j],
-                    linestyle=":",
-                    linewidth=1.8,
-                    color=colors[j],
-                    label=f"predicted unbiased f{j+1}" if i == 0 else None
-                )
-
+                ax.plot(t_axis, X_val[:, i, j], "-", color=colors[j])
+                ax.plot(t_axis, X_sim_biased[:, i, j], "--", color=colors[j])
+                ax.plot(t_axis, X_sim_unbiased[:, i, j], ":", color=colors[j])
             ax.axvline(x=steps_train - 1, linestyle=":", linewidth=2, color="black")
-            ax.set_title(f"Observation {i+1}", fontsize=14)
+            ax.set_title(f"Obs {i+1}")
             ax.grid(alpha=0.3)
-            ax.tick_params(labelsize=11)
 
         for k in range(n_show, 9):
             axes[k].axis("off")
 
-        fig.suptitle("First 9 observations: per-feature trajectories", fontsize=18)
-        fig.supxlabel("Time", fontsize=16)
-        fig.supylabel("Feature value", fontsize=16)
-
-        handles, labels = axes[0].get_legend_handles_labels()
-        fig.legend(
-            handles,
-            labels,
-            loc="upper center",
-            ncol=3,
-            fontsize=10,
-            bbox_to_anchor=(0.5, 0.97)
-        )
-
-        plt.tight_layout(rect=[0, 0, 1, 0.93])
+        fig.suptitle("First 9 observations")
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "trajectories.png"), dpi=300)
         plt.show()
 
     return {
@@ -467,3 +385,286 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
         "cov_error_unbiased_avg": cov_error_unbiased.mean(),
         "frob_error_unbiased_avg": frob_error_unbiased.mean(),
     }
+
+def state_increment_dependence_per_time(X):
+
+    T, num_paths, d = X.shape
+    corr_t = np.zeros(T-1)
+
+    for t in range(T-1):
+        X_t = X[t]          # (num_paths, d)
+        dX  = X[t+1] - X[t]
+
+        vals = []
+        for j in range(d):
+            c = np.corrcoef(X_t[:, j], dX[:, j])[0, 1]
+            if not np.isnan(c):
+                vals.append(c)
+
+        corr_t[t] = np.mean(np.abs(vals)) if len(vals) > 0 else 0
+
+    return corr_t
+
+
+def plot_increment_dependence_per_time(X, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
+    T, num_paths, d = X.shape
+
+    # plot
+    corr_real = state_increment_dependence_per_time(X)
+    corr_biased = state_increment_dependence_per_time(X_sim_biased)
+    corr_unbiased = state_increment_dependence_per_time(X_sim_unbiased)
+
+
+    t_axis = np.arange(len(corr_real))
+
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(t_axis, corr_real, linewidth=3, label="real")
+    plt.plot(t_axis, corr_biased, linewidth=3, label="predicted biased")
+    plt.plot(t_axis, corr_unbiased, linewidth=3, linestyle="--", label="predicted unbiased")
+
+    if full_process:
+        plt.axvline(x=steps_train-1, linestyle=':', linewidth=2, color='black', label='Train/Test split')
+
+    plt.xlabel("Time", fontsize=16)
+    plt.ylabel(r"$\mathbb{E}[|\mathrm{corr}(X_t, X_{t+1}-X_t)|]$", fontsize=16)
+    plt.title("State-dependence over time", fontsize=18)
+
+    plt.legend(fontsize=14)
+    plt.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def evaluate_kernel_scaled(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
+    T, num_paths, d = X_val.shape
+    os.makedirs(save_dir, exist_ok=True)
+
+
+    corr_real = state_increment_dependence_per_time(X_val[steps_train-1:T])
+    corr_biased = state_increment_dependence_per_time(X_sim_biased[steps_train-1:T])
+    corr_unbiased = state_increment_dependence_per_time(X_sim_unbiased[steps_train-1:T])
+
+    corr_error_b  = np.abs(corr_real - corr_biased)
+    corr_error_u  = np.abs(corr_real - corr_unbiased)
+
+    if not full_process:
+        X_val = X_val[steps_train:T]
+        X_sim_biased =  X_sim_biased[steps_train:T]
+        X_sim_unbiased = X_sim_unbiased[steps_train:T]
+
+        T, num_paths, d = X_val.shape
+
+    mean_err_b = np.zeros(T)
+    cov_err_b  = np.zeros(T)
+    wd_b       = np.zeros(T)
+
+    mean_err_u = np.zeros(T)
+    cov_err_u  = np.zeros(T)
+    wd_u       = np.zeros(T)
+
+
+    for t in range(T):
+        mu_val = X_val[t].mean(axis=0)
+        cov_val = np.cov(X_val[t], rowvar=False)
+
+        # biased
+        mu_b = X_sim_biased[t].mean(axis=0)
+        cov_b = np.cov(X_sim_biased[t], rowvar=False)
+
+        mean_err_b[t] = np.linalg.norm(mu_val - mu_b) / (np.linalg.norm(mu_val) + 1e-8)
+        cov_err_b[t]  = np.linalg.norm(cov_val - cov_b, 'fro') / (np.linalg.norm(cov_val, 'fro') + 1e-8)
+
+        wd_b[t] = np.mean([
+            wasserstein_distance(X_val[t,:,j], X_sim_biased[t,:,j]) /(np.linalg.norm(mu_val) + 1e-8)
+            for j in range(d)
+        ])
+
+        # unbiased
+        mu_u = X_sim_unbiased[t].mean(axis=0)
+        cov_u = np.cov(X_sim_unbiased[t], rowvar=False)
+
+        mean_err_u[t] = np.linalg.norm(mu_val - mu_u) / (np.linalg.norm(mu_val) + 1e-8)
+        cov_err_u[t]  = np.linalg.norm(cov_val - cov_u, 'fro') / (np.linalg.norm(cov_val, 'fro') + 1e-8)
+
+        wd_u[t] = np.mean([
+            wasserstein_distance(X_val[t,:,j], X_sim_unbiased[t,:,j]) /(np.linalg.norm(mu_val) + 1e-8)
+            for j in range(d)
+        ])
+
+    a = 0 
+    b = np.max(np.concatenate([
+    cov_err_b, cov_err_u,
+    wd_u, wd_b,
+    mu_u, mu_b,
+    cov_u.flatten(), cov_b.flatten()
+    ]))
+    if plot:
+        t_axis = np.arange(T)
+
+        plt.figure(figsize=(10,6))
+
+        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
+
+        markers = ['o', 's', '^', 'D']
+
+        # Mean
+        plt.plot(t_axis, mean_err_b, color=colors[0], linewidth=3, linestyle='-',
+                marker=markers[0], markersize=6, label="Mean (biased)")
+        plt.plot(t_axis, mean_err_u, color=colors[0], linewidth=3, linestyle='--',
+                marker=markers[0], markersize=6, label="Mean (unbiased)")
+
+        # Cov
+        plt.plot(t_axis, cov_err_b, color=colors[1], linewidth=3, linestyle='-',
+                marker=markers[1], markersize=6, label="Cov (biased)")
+        plt.plot(t_axis, cov_err_u, color=colors[1], linewidth=3, linestyle='--',
+                marker=markers[1], markersize=6, label="Cov (unbiased)")
+
+        # Wasserstein
+        plt.plot(t_axis, wd_b, color=colors[2], linewidth=3, linestyle='-',
+                marker=markers[2], markersize=6, label="WD (biased)")
+        plt.plot(t_axis, wd_u, color=colors[2], linewidth=3, linestyle='--',
+                marker=markers[2], markersize=6, label="WD (unbiased)")
+
+        # Correlation
+        plt.plot(t_axis, a + corr_error_b * (b - a), color=colors[3], linewidth=3, linestyle='-',
+                marker=markers[3], markersize=6, label="Correlation (biased)")
+        plt.plot(t_axis, a + corr_error_u * (b - a), color=colors[3], linewidth=3, linestyle='--',
+                marker=markers[3], markersize=6, label="Correlation (unbiased)")
+
+        if full_process:
+            plt.axvline(x=steps_train-1, linestyle=':', color='black', linewidth=2)
+
+        plt.xlabel("Time", fontsize=16)
+        plt.ylabel("Error", fontsize=16)
+        plt.title("Scaled errors", fontsize=18)
+
+        plt.legend(fontsize=14)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "errors_scaled.png"), dpi=300)
+        plt.show()
+
+
+
+
+def evaluate_kernel_normalized(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
+    T, num_paths, d = X_val.shape
+    os.makedirs(save_dir, exist_ok=True)
+
+
+    corr_real = state_increment_dependence_per_time(X_val[steps_train-1:T])
+    corr_biased = state_increment_dependence_per_time(X_sim_biased[steps_train-1:T])
+    corr_unbiased = state_increment_dependence_per_time(X_sim_unbiased[steps_train-1:T])
+
+    corr_error_b  = np.abs(corr_real - corr_biased)
+    corr_error_u  = np.abs(corr_real - corr_unbiased)
+
+    if not full_process:
+        X_val = X_val[steps_train:T]
+        X_sim_biased =  X_sim_biased[steps_train:T]
+        X_sim_unbiased = X_sim_unbiased[steps_train:T]
+
+        T, num_paths, d = X_val.shape
+
+    mean_err_b = np.zeros(T)
+    cov_err_b  = np.zeros(T)
+    wd_b       = np.zeros(T)
+
+    mean_err_u = np.zeros(T)
+    cov_err_u  = np.zeros(T)
+    wd_u       = np.zeros(T)
+
+
+    for t in range(T):
+        mu_val = X_val[t].mean(axis=0)
+        cov_val = np.cov(X_val[t], rowvar=False)
+
+        # biased
+        mu_b = X_sim_biased[t].mean(axis=0)
+        cov_b = np.cov(X_sim_biased[t], rowvar=False)
+
+        mean_err_b[t] = np.linalg.norm(mu_val - mu_b) 
+        cov_err_b[t]  = np.linalg.norm(cov_val - cov_b, 'fro')
+
+        wd_b[t] = np.mean([
+            wasserstein_distance(X_val[t,:,j], X_sim_biased[t,:,j]) 
+            for j in range(d)
+        ])
+
+        # unbiased
+        mu_u = X_sim_unbiased[t].mean(axis=0)
+        cov_u = np.cov(X_sim_unbiased[t], rowvar=False)
+
+        mean_err_u[t] = np.linalg.norm(mu_val - mu_u) 
+        cov_err_u[t]  = np.linalg.norm(cov_val - cov_u, 'fro')
+
+        wd_u[t] = np.mean([
+            wasserstein_distance(X_val[t,:,j], X_sim_unbiased[t,:,j]) 
+            for j in range(d)
+        ])
+
+    a = 0 
+    b = np.max(np.concatenate([
+    cov_err_b, cov_err_u,
+    wd_u, wd_b,
+    mu_u, mu_b,
+    cov_u.flatten(), cov_b.flatten()
+    ]))
+    if plot:
+        t_axis = np.arange(T)
+
+        plt.figure(figsize=(10,6))
+
+        colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red']
+
+        markers = ['o', 's', '^', 'D']
+
+        # Mean
+        plt.plot(t_axis, mean_err_b, color=colors[0], linewidth=3, linestyle='-',
+                marker=markers[0], markersize=6, label="Mean (biased)")
+        plt.plot(t_axis, mean_err_u, color=colors[0], linewidth=3, linestyle='--',
+                markersize=6, label="Mean (unbiased)")
+
+        # Cov
+        plt.plot(t_axis, cov_err_b, color=colors[1], linewidth=3, linestyle='-',
+                marker=markers[1], markersize=6, label="Cov (biased)")
+        plt.plot(t_axis, cov_err_u, color=colors[1], linewidth=3, linestyle='--',
+                 markersize=6, label="Cov (unbiased)")
+
+        # Wasserstein
+        plt.plot(t_axis, wd_b, color=colors[2], linewidth=3, linestyle='-',
+                marker=markers[2], markersize=6, label="WD (biased)")
+        plt.plot(t_axis, wd_u, color=colors[2], linewidth=3, linestyle='--',
+                 markersize=6, label="WD (unbiased)")
+
+        # Correlation
+        plt.plot(t_axis, corr_error_b, color=colors[3], linewidth=3, linestyle='-',
+                marker=markers[3], markersize=6, label="Correlation (biased)")
+        plt.plot(t_axis, corr_error_u, color=colors[3], linewidth=3, linestyle='--',
+                markersize=6, label="Correlation (unbiased)")
+
+        if full_process:
+            plt.axvline(x=steps_train-1, linestyle=':', color='black', linewidth=2)
+
+        plt.xlabel("Time", fontsize=16)
+        plt.ylabel("Error", fontsize=16)
+        plt.title("Scaled errors", fontsize=18)
+
+        plt.legend(
+        fontsize=12,
+        loc='center left',
+        bbox_to_anchor=(1.02, 0.5),
+        borderaxespad=0
+        )
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+
+        plt.grid(alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "errors_scaled.png"), dpi=300)
+        plt.show()
