@@ -13,6 +13,7 @@ from geo_data_preprocess import *
 
 # mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
 dataset_id = 'GSE132741' 
+#dataset_id = 'GSE167665'
 
 # A rat epigenetic clock with methylation, ages 1-27 months 
 #dataset_id = 'GSE161141' 
@@ -79,7 +80,7 @@ for i, w in enumerate(weeks):
     
 
 # take a few features as befoer
-n_features = 5
+n_features = 30
 X_sub = X[:, :, np.arange(n_features)]
 
 
@@ -89,20 +90,20 @@ X_sub = X[:, :, np.arange(n_features)]
 train_steps = int(0.8 * X_sub.shape[0])
 
 
-X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
-X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+#X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+#X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
 
 
-np.save(f"X_real_val_{dataset_id}.npy" , X_sub)
-np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
+np.save(f"X_real_val_30_{dataset_id}.npy" , X_sub)
+#np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
 
 
 ####### try takking more features
-X_sub = X[:, :, np.arange(70)]
-train_steps = int(0.8 * X_sub.shape[0])
-X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
-X_real_pred_large = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+#X_sub = X[:, :, np.arange(70)]
+#train_steps = int(0.8 * X_sub.shape[0])
+#X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+#X_real_pred_large = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
 
-np.save(f"X_real_pred_large_{dataset_id}.npy" , minmax(X_real_pred_large))
+#np.save(f"X_real_pred_large_{dataset_id}.npy" , minmax(X_real_pred_large))
 
 aa = 1

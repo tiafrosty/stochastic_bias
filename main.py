@@ -8,14 +8,19 @@ import pandas as pd
 from kernel_estimation import *
 
 ##
+# worms
+dataset_id = 'E-GEOD-12290' 
+
 # mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
 #dataset_id = 'GSE132741' 
 
 # rats methylation, 1.5-35 months,  ~5 observationsper time  point
-dataset_id = 'GSE161141' 
+#dataset_id = 'GSE161141' 
 
 #  load real data, shape [time x Patients x Genes]
-X_real_val = np.load(f"X_real_val_{dataset_id}.npy")
+X_real_val = np.load(f"X_real_val_30_{dataset_id}.npy")
+#n_features = 30
+#X_real_val= X_real_val[:, :, np.arange(n_features)]
 
 # test and train size GLOBALLY FOR ALL DATA
 T, n_obs, n_features = X_real_val.shape  # number of timepoints
@@ -90,7 +95,7 @@ visited_size_real, mean_real, var_real, global_min_real, global_max_real, global
 
 ########3 PLOT ###############
 
-all_bias_plots(
+all_bias_plots(dataset_id,
     X_biased_val,
     visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased, var_t_biased,
     visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased,entropy_unbiased, var_t_unbiased,
@@ -111,11 +116,10 @@ X_pred_biased = estimate_kernel_biased(X_real_val, X_real_t, X_real_t1, future_s
 
 X_pred_unbiased = estimate_kernel_unbiased(X_real_val, X_real_t, X_real_t1, future_steps, seed = seed)
 
-
 #plot_increment_dependence_per_time(X_real_val[train_steps:T], X_pred_biased[train_steps:T], X_pred_unbiased[train_steps:T], plot=True, steps_train=train_steps)
 
 #evaluate_kernel_3plots(X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps)
-evaluate_kernel_normalized(X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps)
+evaluate_kernel_normalized(dataset_id, X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps)
 #evaluate_kernel_scaled(X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps, full_process=True)
 
 plot_feature_histograms_3plots(X_real_val, X_pred_biased, X_pred_unbiased, time_points=np.arange(train_steps+1,train_steps+4), bins=30)

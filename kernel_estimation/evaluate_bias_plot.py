@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def all_bias_plots(
+def all_bias_plots(dataset_id,
     X_b,
     visited_size_biased, mean_biased, var_biased, global_min_biased, global_max_biased, global_range_biased, new_bins_biased, entropy_biased, var_t_biased,
     visited_size_unbiased, mean_unbiased, var_unbiased, global_min_unbiased, global_max_unbiased, global_range_unbiased, new_bins_unbiased, entropy_unbiased, var_t_unbiased,
@@ -256,7 +256,7 @@ def all_bias_plots(
 
     # ---- Final layout ----
     plt.tight_layout()
-    plt.savefig("combined_dynamics_panel.png", dpi=300, bbox_inches="tight")
+    plt.savefig(f"combined_dynamics_panel_{dataset_id}.png", dpi=300, bbox_inches="tight")
     plt.show()
         
     

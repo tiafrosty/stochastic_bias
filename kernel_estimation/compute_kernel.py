@@ -552,7 +552,7 @@ def evaluate_kernel_scaled(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
 
 
 
-def evaluate_kernel_normalized(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
+def evaluate_kernel_normalized(dataset_id, X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
     T, num_paths, d = X_val.shape
     os.makedirs(save_dir, exist_ok=True)
 
@@ -666,5 +666,5 @@ def evaluate_kernel_normalized(X_val, X_sim_biased, X_sim_unbiased, plot=True, s
 
         plt.grid(alpha=0.3)
         plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, "errors_scaled.png"), dpi=300)
+        plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}.png"), dpi=300)
         plt.show()

@@ -20,6 +20,8 @@ series_matrix_name =  f"clinical-data(doita)/{dataset_id}_series_matrix.txt"
 # get meta data and gene expression (gene expression is usually empty though, but keep it just in case)
 meta_d, gene_d = get_metadata(family_soft_name,  series_matrix_name)
 
+
+#aa = get_extracted_table_cgmap(dataset_id, 'CGmap', 10000) 
 # now, read the extracted file with gene data (should only be used after running an .sh script for extraction) and put it together in a table
 genes_table = pd.read_csv("df_rats.csv", index_col=0) #get_extracted_table_cgmap(dataset_id, 'CGmap', 10000) 
 
@@ -76,7 +78,7 @@ for i, w in enumerate(weeks):
     
 
 # take a few features as befoer
-n_features = 5
+n_features = 30
 X_sub = X[:, :, np.arange(n_features)]
 
 
@@ -86,20 +88,20 @@ X_sub = X[:, :, np.arange(n_features)]
 train_steps = int(0.8 * X_sub.shape[0])
 
 
-X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
-X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+#X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+#X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
 
 
 np.save(f"X_real_val_{dataset_id}.npy" , X_sub)
-np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
+#np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
 
 
 ####### try takking more features
-X_sub = X[:, :, np.arange(70)]
-train_steps = int(0.8 * X_sub.shape[0])
-X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
-X_real_pred_large = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
+#X_sub = X[:, :, np.arange(70)]
+#train_steps = int(0.8 * X_sub.shape[0])
+#X_real_t, X_real_t1 = make_pairs(X_sub[:train_steps])
+#X_real_pred_large = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
 
-np.save(f"X_real_pred_large_{dataset_id}.npy" , minmax(X_real_pred_large))
+#np.save(f"X_real_pred_large_{dataset_id}.npy" , minmax(X_real_pred_large))
 
 aa = 1
