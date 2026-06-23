@@ -4,8 +4,111 @@ from scipy.spatial.distance import cdist
 from scipy.stats import wasserstein_distance
 import pandas as pd
 import math
+from sklearn.linear_model import Ridge, MultiTaskLasso, MultiTaskElasticNet
+
+
 
 import os
+
+# this is to evaluate performance across models (ridge, elnet, lasso)
+
+def plot_all_model_errors(avg_errors_models, dataset_id, save_dir="plots"):
+    os.makedirs(save_dir, exist_ok=True)
+
+    error_keys = {
+        "Mean error": "mean_err_b",
+        "Covariance error": "cov_err_b",
+        "Correlation error": "corr_error_b",
+    }
+
+    colors = {
+        "ridge": "tab:blue",
+        "lasso": "tab:orange",
+        "elastic_net": "tab:green",
+    }
+
+    linestyles = {
+        "ridge": "-",
+        "lasso": "--",
+        "elastic_net": ":",
+    }
+
+    fig, axes = plt.subplots(
+        1, 3,
+        figsize=(15, 5),
+        dpi=120,
+        sharex=True
+    )
+
+    for ax, (title, key) in zip(axes, error_keys.items()):
+
+        for model_name, model_errors in avg_errors_models.items():
+
+            y = model_errors[key]
+            t = np.arange(len(y))
+
+            ax.plot(
+                t,
+                y,
+                color=colors[model_name],
+                linestyle=linestyles[model_name],
+                linewidth=3,
+                label=model_name.replace("_", " ").title(),
+            )
+
+        ax.set_title(title, fontsize=16)
+        ax.set_xlabel("Time", fontsize=12)
+        ax.grid(alpha=0.3)
+
+    axes[0].set_ylabel("Error", fontsize=12)
+
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=3,
+        fontsize=12,
+        bbox_to_anchor=(0.5, 1.02),
+    )
+
+    fig.suptitle(
+        f"{dataset_id}: model comparison",
+        fontsize=20,
+        y=1.08,
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(save_dir, f"model_errors_{dataset_id}.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+
+    plt.show()
+
+
+models = {
+    "ridge": Ridge(
+        alpha=1.0,
+        fit_intercept=True,
+    ),
+
+    "lasso": MultiTaskLasso(
+        alpha=1e-3,
+        max_iter=10000,
+        random_state=0,
+    ),
+
+    "elastic_net": MultiTaskElasticNet(
+        alpha=1e-3,
+        l1_ratio=0.5,
+        max_iter=10000,
+        random_state=0,
+    ),
+}
+
 
 
 def plot_feature_histograms(X_val, X_sim, biased_unbiased, time_points=[80, 90, 99], bins=30):

@@ -78,9 +78,17 @@ for i, w in enumerate(weeks):
     
 
 # take a few features as befoer
+n_features = 100
+X_sub = X[:, :, np.arange(n_features)]
+np.save(f"X_real_val_100_{dataset_id}.npy" , X_sub)
+
 n_features = 30
 X_sub = X[:, :, np.arange(n_features)]
+np.save(f"X_real_val_30_{dataset_id}.npy" , X_sub)
 
+n_features = 5
+X_sub = X[:, :, np.arange(n_features)]
+np.save(f"X_real_val_5_{dataset_id}.npy" , X_sub)
 
 # try this: predict like 50 states, then we have more time points
 # look at the long term run
@@ -92,7 +100,6 @@ train_steps = int(0.8 * X_sub.shape[0])
 #X_real_pred = estimate_kernel(X_sub, X_real_t, X_real_t1, 60)
 
 
-np.save(f"X_real_val_{dataset_id}.npy" , X_sub)
 #np.save(f"X_real_pred_{dataset_id}.npy" , minmax(X_real_pred))
 
 

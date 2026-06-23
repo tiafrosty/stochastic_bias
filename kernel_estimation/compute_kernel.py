@@ -4,9 +4,148 @@ from scipy.spatial.distance import cdist
 from scipy.stats import wasserstein_distance
 import pandas as pd
 
+from sklearn.linear_model import Ridge
+from sklearn.covariance import LedoitWolf
+
 import os
 
 from geo_data_preprocess import *
+
+import sys 
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+from common.common_modules import sample_truncated_normal
+
+from scipy.stats import truncnorm
+
+from scipy.stats import norm, truncnorm
+
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import PolynomialFeatures
+
+from sklearn.linear_model import Lasso, MultiTaskLasso
+from sklearn.linear_model import MultiTaskElasticNet
+
+
+from scipy.stats import ttest_rel
+
+
+
+###### estimate and plot CI and p-values
+
+def mean_ci(arr):
+    arr = np.asarray(arr)  # runs x time
+    m = arr.mean(axis=0)
+    se = arr.std(axis=0, ddof=1) / np.sqrt(arr.shape[0])
+    ci = 1.96 * se
+    return m, ci
+
+
+def p_value_over_runs(all_errors, key_b, key_u):
+    b = np.array([e[key_b].mean() for e in all_errors])
+    u = np.array([e[key_u].mean() for e in all_errors])
+
+    # one-sided: biased error < unbiased error
+    res = ttest_rel(b, u)
+    p = res.pvalue / 2 if b.mean() < u.mean() else 1 - res.pvalue / 2
+
+    return p
+
+
+def plot_all_metrics_with_ci(dataset_id, all_errors, d, save_dir="plots"):
+    os.makedirs(save_dir, exist_ok=True)
+
+    metrics = [
+        ("mean_err_b", "mean_err_u", "Mean"),
+        ("cov_err_b", "cov_err_u", "Cov"),
+        ("wd_b", "wd_u", "WD"),
+        ("corr_error_b", "corr_error_u", "Correlation"),
+    ]
+
+    plt.figure(figsize=(10, 6), dpi=120)
+
+
+    colors = {
+    "Mean": "tab:blue",
+    "Cov": "tab:orange",
+    "WD": "tab:green",
+    "Correlation": "tab:red",
+    }
+
+    for key_b, key_u, label in metrics:
+        B = np.stack([e[key_b] for e in all_errors])
+        U = np.stack([e[key_u] for e in all_errors])
+
+        mb, cib = mean_ci(B)
+        mu, ciu = mean_ci(U)
+
+        t_axis = np.arange(len(mb))
+        p = p_value_over_runs(all_errors, key_b, key_u)
+
+        c = colors[label]
+        
+
+        plt.plot(
+            t_axis, mb,
+            color=c,
+            linestyle="-",
+            linewidth=3,
+            label=f"{label} (biased, p={p:.2g})"
+        )
+
+        plt.fill_between(
+            t_axis,
+            mb - cib,
+            mb + cib,
+            color=c,
+            alpha=0.15
+        )
+
+        plt.plot(
+            t_axis, mu,
+            color=c,
+            linestyle="--",
+            linewidth=3,
+            label=f"{label} (unbiased)"
+        )
+
+        plt.fill_between(
+            t_axis,
+            mu - ciu,
+            mu + ciu,
+            color=c,
+            alpha=0.08
+        )
+
+    plt.xlabel("Time", fontsize=16)
+    plt.title(f"{dataset_id}, {d} selected CpG", fontsize=24)
+    plt.grid(alpha=0.3)
+    plt.legend(fontsize=11, ncol=2)
+    plt.tight_layout()
+
+    plt.savefig(
+        os.path.join(save_dir, f"errors_ci_{dataset_id}_{d}.png"),
+        dpi=300,
+        bbox_inches="tight"
+    )
+    plt.show()
+
+def sample_truncated_gaussian_copula(mean_next, Sigma):
+    n, d = mean_next.shape
+
+    # correlated standard Gaussian
+    L = np.linalg.cholesky(Sigma + 1e-8 * np.eye(d))
+    z = np.random.normal(size=(n, d)) @ L.T
+
+    # convert to correlated uniforms
+    u = norm.cdf(z)
+
+    # coordinate-wise truncated normal marginals
+    sigma = np.sqrt(np.diag(Sigma))
+    a = (0 - mean_next) / sigma
+    b = (1 - mean_next) / sigma
+
+    return truncnorm.ppf(u, a, b, loc=mean_next, scale=sigma)
+
 
 def make_pairs(X_hist):
     state_dim = X_hist.shape[2]
@@ -15,6 +154,91 @@ def make_pairs(X_hist):
     X_t1 = X_hist[1:].reshape(-1, state_dim)
     return X_t, X_t1
 
+
+def estimate_kernel_biased_drift(Xb_hist, Xb_t, Xb_t1, future_steps,my_model,  seed=None):
+
+    rng = np.random.default_rng(seed)
+
+    T, num_paths, state_dim = Xb_hist.shape
+
+    # learn drift: delta = X_{t+1} - X_t
+    delta = Xb_t1 - Xb_t
+    
+    ##################
+    # new new idea: elastic net
+    ######
+
+    #poly = PolynomialFeatures(
+    #    degree=2,
+    #    include_bias=False
+    #)
+
+    #X_poly = poly.fit_transform(Xb_t)
+
+    model = my_model #MultiTaskLasso(
+    #alpha=1e-3,
+    #max_iter=10000,
+    #random_state=0
+#)
+
+
+    #model = Ridge(
+    #alpha=1.0,
+    #fit_intercept=True
+#)
+
+    #model = MultiTaskElasticNet(
+    #    alpha=1e-2,
+    #    l1_ratio=0.5,
+    #    max_iter=10000,
+    #    random_state=0
+    #)
+
+    model.fit(Xb_t, delta)
+
+    def drift_hat(x):
+        x = np.atleast_2d(x)
+        #return model.predict(poly.transform(x))
+        return model.predict(x)
+
+    #### new idea: quadratic regression
+    #model = make_pipeline(
+    #PolynomialFeatures(degree=2, include_bias=False),
+    #Ridge(alpha=1.0, fit_intercept=True)
+    #Lasso(alpha=1e-3, max_iter=1000)
+    #)
+
+    #model.fit(Xb_t, delta)
+
+    #def drift_hat(x):
+    #    x = np.atleast_2d(x)
+    #    return model.predict(x)
+    
+    #################################
+
+    residuals = delta - drift_hat(Xb_t)
+    Sigma_hat = LedoitWolf().fit(residuals).covariance_
+
+    Xb_future = np.zeros((future_steps, num_paths, state_dim))
+    Xb_current = Xb_hist[-1].copy()
+
+    for t in range(future_steps):
+
+        mean_delta = drift_hat(Xb_current)
+
+        mean_next = Xb_current + mean_delta
+
+        Xb_current = sample_truncated_normal(
+            mean_next,
+            Sigma_hat
+        )
+
+        Xb_future[t] = Xb_current
+
+    steps_train = int(0.8 * Xb_hist.shape[0])
+    Xb_future_all = np.concatenate([Xb_hist[:steps_train], Xb_future])
+
+    return Xb_future_all
 
 def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps, seed = None):
     
@@ -81,10 +305,11 @@ def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps, seed=None):
     # ============================================================
 
     increments_u = Xu_t1 - Xu_t
-    Sigma_u_hat = np.cov(increments_u, rowvar=False)
+    Sigma_u_hat = LedoitWolf().fit(increments_u).covariance_
+    #Sigma_u_hat = np.cov(increments_u, rowvar=False)
 
-    print("Estimated covariance for unbiased kernel:")
-    print(Sigma_u_hat)
+    #print("Estimated covariance for unbiased kernel:")
+    #print(Sigma_u_hat)
     T, num_paths, state_dim = Xu_hist.shape
 
     # Generate future unbiased trajectories starting from last observed state
@@ -97,14 +322,14 @@ def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps, seed=None):
         Xu_current = Xu_hist[-1].copy()
 
         for h in range(future_steps):
-            noise = rng.multivariate_normal(
-                mean=np.zeros(state_dim),
-                cov=sigma_hat,
-                size=num_paths
-            )
+            mean_next = Xu_current
 
-            Xu_current = Xu_current + noise
-            Xu_future[h] = np.clip(Xu_current, 0, 1)
+            Xu_current = sample_truncated_normal(
+            mean_next,
+            sigma_hat
+        )
+
+            Xu_future[h] = Xu_current
 
         return Xu_future
     
@@ -388,6 +613,7 @@ def evaluate_kernel_3plots(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
 
 def state_increment_dependence_per_time(X):
 
+    eps=1e-12
     T, num_paths, d = X.shape
     corr_t = np.zeros(T-1)
 
@@ -397,9 +623,17 @@ def state_increment_dependence_per_time(X):
 
         vals = []
         for j in range(d):
-            c = np.corrcoef(X_t[:, j], dX[:, j])[0, 1]
+            x = X_t[:, j]
+            y = dX[:, j]
+
+            if np.std(x) < eps or np.std(y) < eps:
+                continue
+
+            c = np.corrcoef(x, y)[0, 1]
+
             if not np.isnan(c):
                 vals.append(c)
+
 
         corr_t[t] = np.mean(np.abs(vals)) if len(vals) > 0 else 0
 
@@ -437,7 +671,7 @@ def plot_increment_dependence_per_time(X, X_sim_biased, X_sim_unbiased, plot=Tru
     plt.show()
 
 
-def evaluate_kernel_scaled(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
+def evaluate_kernel_scaled(dataset_id, X_val, X_sim_biased, X_sim_unbiased, plot=True, steps_train=80, save_dir="plots", full_process = False):
     T, num_paths, d = X_val.shape
     os.makedirs(save_dir, exist_ok=True)
 
@@ -538,17 +772,163 @@ def evaluate_kernel_scaled(X_val, X_sim_biased, X_sim_unbiased, plot=True, steps
 
         plt.xlabel("Time", fontsize=16)
         plt.ylabel("Error", fontsize=16)
-        plt.title("Scaled errors", fontsize=18)
-
+        plt.title(f"{dataset_id}, {d} selected CpG", fontsize=18)
         plt.legend(fontsize=14)
         plt.xticks(fontsize=12)
         plt.yticks(fontsize=12)
 
         plt.grid(alpha=0.3)
         plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, "errors_scaled.png"), dpi=300)
+        plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}_{d}.png"), dpi=300)
         plt.show()
 
+
+def compute_kernel_scaled_errors(
+    X_val,
+    X_sim_biased,
+    X_sim_unbiased,
+    steps_train=80,
+    full_process=False,
+):
+    T, num_paths, d = X_val.shape
+
+    corr_real = state_increment_dependence_per_time(X_val[steps_train - 1:T])
+    corr_biased = state_increment_dependence_per_time(X_sim_biased[steps_train - 1:T])
+    corr_unbiased = state_increment_dependence_per_time(X_sim_unbiased[steps_train - 1:T])
+
+    corr_error_b = np.abs(corr_real - corr_biased)
+    corr_error_u = np.abs(corr_real - corr_unbiased)
+
+    if not full_process:
+        X_val = X_val[steps_train:T]
+        X_sim_biased = X_sim_biased[steps_train:T]
+        X_sim_unbiased = X_sim_unbiased[steps_train:T]
+
+    T, num_paths, d = X_val.shape
+
+    mean_err_b = np.zeros(T)
+    cov_err_b = np.zeros(T)
+    wd_b = np.zeros(T)
+
+    mean_err_u = np.zeros(T)
+    cov_err_u = np.zeros(T)
+    wd_u = np.zeros(T)
+
+    for t in range(T):
+        mu_val = X_val[t].mean(axis=0)
+        cov_val = np.cov(X_val[t], rowvar=False)
+
+        mu_b = X_sim_biased[t].mean(axis=0)
+        cov_b = np.cov(X_sim_biased[t], rowvar=False)
+
+        mean_err_b[t] = np.linalg.norm(mu_val - mu_b) / (np.linalg.norm(mu_val) + 1e-8)
+        cov_err_b[t] = np.linalg.norm(cov_val - cov_b, "fro") / (
+            np.linalg.norm(cov_val, "fro") + 1e-8
+        )
+
+        wd_b[t] =0
+
+        mu_u = X_sim_unbiased[t].mean(axis=0)
+        cov_u = np.cov(X_sim_unbiased[t], rowvar=False)
+
+        mean_err_u[t] = np.linalg.norm(mu_val - mu_u) / (np.linalg.norm(mu_val) + 1e-8)
+        cov_err_u[t] = np.linalg.norm(cov_val - cov_u, "fro") / (
+            np.linalg.norm(cov_val, "fro") + 1e-8
+        )
+
+        wd_u[t] = 0
+
+    scale_min = 0
+    scale_max = np.max(np.concatenate([
+        mean_err_b,
+        mean_err_u,
+        cov_err_b,
+        cov_err_u,
+        wd_b,
+        wd_u,
+    ]))
+
+    return {
+        "mean_err_b": mean_err_b,
+        "mean_err_u": mean_err_u,
+        "cov_err_b": cov_err_b,
+        "cov_err_u": cov_err_u,
+        "wd_b": wd_b,
+        "wd_u": wd_u,
+        "corr_error_b": corr_error_b,
+        "corr_error_u": corr_error_u,
+        "scale_min": scale_min,
+        "scale_max": scale_max,
+        "T": T,
+        "d": d,
+    }
+
+def plot_kernel_scaled_errors(
+    dataset_id,
+    errors,
+    steps_train=80,
+    save_dir="plots",
+    full_process=False,
+):
+    os.makedirs(save_dir, exist_ok=True)
+
+    mean_err_b = errors["mean_err_b"]
+    mean_err_u = errors["mean_err_u"]
+    cov_err_b = errors["cov_err_b"]
+    cov_err_u = errors["cov_err_u"]
+    wd_b = errors["wd_b"]
+    wd_u = errors["wd_u"]
+    corr_error_b = errors["corr_error_b"]
+    corr_error_u = errors["corr_error_u"]
+
+    a = errors["scale_min"]
+    b = errors["scale_max"]
+
+    T = errors["T"]
+    d = errors["d"]
+    t_axis = np.arange(T)
+
+    plt.figure(figsize=(10, 6))
+
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red"]
+    markers = ["o", "s", "^", "D"]
+
+    plt.plot(t_axis, mean_err_b, color=colors[0], linewidth=3, linestyle="-",
+             marker=markers[0], markersize=6, label="Mean (biased)")
+    plt.plot(t_axis, mean_err_u, color=colors[0], linewidth=3, linestyle="--",
+             marker=markers[0], markersize=6, label="Mean (unbiased)")
+
+    plt.plot(t_axis, cov_err_b, color=colors[1], linewidth=3, linestyle="-",
+             marker=markers[1], markersize=6, label="Cov (biased)")
+    plt.plot(t_axis, cov_err_u, color=colors[1], linewidth=3, linestyle="--",
+             marker=markers[1], markersize=6, label="Cov (unbiased)")
+
+    #plt.plot(t_axis, wd_b, color=colors[2], linewidth=3, linestyle="-",
+    #         marker=markers[2], markersize=6, label="WD (biased)")
+    #plt.plot(t_axis, wd_u, color=colors[2], linewidth=3, linestyle="--",
+    #         marker=markers[2], markersize=6, label="WD (unbiased)")
+
+    plt.plot(t_axis, a + corr_error_b * (b - a), color=colors[3], linewidth=3,
+             linestyle="-", marker=markers[3], markersize=6,
+             label="Correlation (biased)")
+    plt.plot(t_axis, a + corr_error_u * (b - a), color=colors[3], linewidth=3,
+             linestyle="--", marker=markers[3], markersize=6,
+             label="Correlation (unbiased)")
+
+    if full_process:
+        plt.axvline(x=steps_train - 1, linestyle=":", color="black", linewidth=2)
+
+    plt.xlabel("Time", fontsize=16)
+    #plt.ylabel("Error", fontsize=16)
+    plt.title(f"{dataset_id}, {d} selected CpG", fontsize=24)
+    plt.legend(fontsize=14)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}_{d}.png"), dpi=300)
+    plt.show()
 
 
 
@@ -653,7 +1033,7 @@ def evaluate_kernel_normalized(dataset_id, X_val, X_sim_biased, X_sim_unbiased, 
 
         plt.xlabel("Time", fontsize=16)
         plt.ylabel("Error", fontsize=16)
-        plt.title("Scaled errors", fontsize=18)
+        plt.title(f"{dataset_id}, {d} selected CpG", fontsize=18)
 
         plt.legend(
         fontsize=12,

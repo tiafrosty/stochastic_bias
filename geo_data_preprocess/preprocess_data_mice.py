@@ -2,11 +2,132 @@ import pandas as pd
 from tqdm import tqdm
 import numpy as np
 
+from methylprep import run_pipeline
+
 import glob
 from tqdm import tqdm
 
+from pathlib import Path
+
 # connect my modules
 from kernel_estimation import *
+
+
+def temporal_feature_correlations(X):
+    """
+    X shape: time x observations x features
+    """
+
+    T, n_obs, d = X.shape
+
+    corrs = np.zeros((T - 1, d))
+
+    for t in range(T - 1):
+
+        for j in range(d):
+
+            x1 = X[t, :, j]
+            x2 = X[t + 1, :, j]
+
+            corrs[t, j] = np.corrcoef(x1, x2)[0, 1]
+
+    corrs = np.nan_to_num(corrs, nan=0.0)
+
+    # average over time
+    mean_corrs = corrs.mean(axis=0)
+
+    return mean_corrs
+
+
+def select_age_associated_features(
+    X,
+    dataset_id,
+    ages,
+    n_features=100,
+    seed=None
+): 
+    n_bootstrap = 100
+    save_dir = Path(__file__).resolve().parents[1] / "all_data_files"
+    save_dir.mkdir(exist_ok=True)
+
+    rng = np.random.default_rng(seed)
+
+    for b in range(n_bootstrap):
+
+        idx = rng.choice(
+            X.shape[2],
+            size=n_features,
+            replace=False
+        )
+
+        print(idx)
+
+        X_sub = X[:, :, idx]
+
+        np.save(
+            save_dir / f"X_real_val_{n_features}_{dataset_id}_boot{b}.npy",
+            X_sub
+        )
+
+
+# def select_age_associated_features(
+#     X,
+#     dataset_id,
+#     ages,
+#     n_features=100
+# ):
+#     """
+#     Select CpGs with strongest correlation to age.
+
+#     Parameters
+#     ----------
+#     X : ndarray
+#         Shape (time, observations, features)
+
+#     ages : ndarray
+#         Shape (time,)
+
+#     dataset_id : str
+#         GEO dataset identifier
+
+#     n_features : int
+#         Number of CpGs to select
+#     """
+
+#     save_dir = (
+#         Path(__file__).resolve().parents[1]
+#         / "all_data_files"
+#     )
+
+#     save_dir.mkdir(exist_ok=True)
+
+#     # mean trajectory per feature
+#     M = X.mean(axis=1)   # shape: time x features
+
+#     corrs = np.zeros(X.shape[2])
+
+#     # correlation of each CpG trajectory with age
+#     for j in range(X.shape[2]):
+
+#         corrs[j] = np.corrcoef(
+#             M[:, j],
+#             ages
+#         )[0, 1]
+
+#     corrs = np.nan_to_num(corrs, nan=0.0)
+
+#     # strongest age-associated CpGs
+#     idx = np.argsort(np.abs(corrs))[-n_features:]
+
+#     X_sub = X[:, :, idx]
+
+#     np.save(
+#         save_dir / f"X_real_val_{n_features}_{dataset_id}.npy",
+#         X_sub
+#     )
+
+#     return X_sub
+
 
 # normalize
 def sigmoid(x):
@@ -18,11 +139,17 @@ def minmax(x):
 
 def get_metadata(family_soft_name,  series_matrix_name):
 
-    df_gene_expr = pd.read_csv(series_matrix_name,
-        sep="\t",
-        comment="!",   # removes GEO metadata lines
-    index_col=0    # genes as index
-    )
+    # some data stored in such a shitty way that i cant even read the rows, just return an empty df i dont need it in any case
+    try:
+        df_gene_expr = pd.read_csv(
+            series_matrix_name,
+            sep="\t",
+            comment="!",   # removes GEO metadata lines
+            index_col=0    # genes as index
+        )
+    except Exception:
+        df_gene_expr = pd.DataFrame()
+    
 
     samples = []
     current = None
@@ -67,7 +194,7 @@ def get_metadata(family_soft_name,  series_matrix_name):
 
 
 
-def get_extracted_table(data_id, data_extension):
+def get_extracted_table(data_id, data_extension, sel_features = False, n_sel_features = 0):
     '''
     takes 2 files, data_extension is like txt or csv
     '''
@@ -88,14 +215,22 @@ def get_extracted_table(data_id, data_extension):
         else:
             df = pd.read_csv(f)
         
+        # if the number of genes is too big, just cut it to some subset
+        if sel_features == False:
+            n_sel_features = df.shape[0]
         # first column = gene IDs, second = expression
         if sample_names is None:
-            sample_names = df.iloc[:, 0]  # gene IDs
+            sample_names = df.iloc[:, 0][:n_sel_features]  # gene IDs
         
         # if its a csv, then most likely its 2 columns
         data_col_ind = len(df.columns) - 1
-        expr = df.iloc[:, 1].values  # expression column
-        
+        if data_id == 'GSE120132':
+            expr = df.iloc[:, 5][:n_sel_features].values
+
+
+        else:
+            expr = df.iloc[:, 1][:n_sel_features].values  # expression column
+
         rows.append(expr)
 
     # build dataframe

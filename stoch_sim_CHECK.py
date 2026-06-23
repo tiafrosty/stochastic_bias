@@ -7,246 +7,256 @@ import pandas as pd
 # connect my modules
 from kernel_estimation import *
 from geo_data_preprocess import *
+from common.common_modules import compute_A_from_X
 
-SEED = 42
+
+from scipy.stats import truncnorm
 
 
-###333 do like this: use real data as initial state and match dimensions
-# mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
-#dataset_id = 'GSE132741' 
 
-# rats 
-#dataset_id = 'GSE161141' 
 
-# mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
-#dataset_id = 'GSE132741' 
+#SEED = 42
 
-# worms
-dataset_id = 'E-GEOD-12290' 
+SEED = 100
 
-#  load real data, shape [time x Patients x Genes]
-X_real_val = np.load(f"X_real_val_30_{dataset_id}.npy")
+from pathlib import Path
 
- 
-time_steps, num_paths, state_dim = X_real_val.shape
-# ---------------- parameters ----------------
-#state_dim   = 5
-## age is modelled up to a 100 years
-#time_steps  = 100 # 100
-#num_paths   = 1000
 
-bias_strength = 60 / time_steps # 400
-drift_strength = 1 #400/time_steps
-noise_scale   = 1.0 / state_dim
-# -------------------------------------------
-#### damage
-D_t = 0
 
-# identity 2D matrix
-Sigma = noise_scale * np.eye(state_dim)
-np.random.seed(SEED)
-X_0 = np.random.randn(num_paths, state_dim)
-
-X_biased   = X_0.copy()
-X_unbiased = X_0.copy()
-
-def compute_A_from_X(X, bias_strength):
-    mu = X.mean(axis=0)
-    sd = X.std(axis=0, ddof=1)
-    z  = np.abs(mu) / (sd + 1e-12)
-    A_t = bias_strength * np.diag(z)
-    return A_t
-
-# Discretization
-def bin_states(X, bin_width):
+def sample_truncated_mvnormal(mean_next, Sigma, rng=np.random):
     """
-    Map continuous states X (n, d) to discrete bin indices (n, d) by rounding to grid.
+    Sample from N(mean_next, Sigma) 
+
+    mean_next : (num_paths, state_dim)
+    Sigma     : (state_dim, state_dim)
     """
-    return np.floor(X / bin_width).astype(np.int64)
 
-def rows_to_tuples(B):
-    """
-    Convert (n, d) integer array to a set of tuples for hashing/unique counting.
-    """
-    return set(map(tuple, B))
-# ------------------------------------------------------------
+    num_paths, state_dim = mean_next.shape
 
-# ------------------ Idea 4: store full trajectories ------------------
+    accepted = np.zeros_like(mean_next)
+    done = np.zeros(num_paths, dtype=bool)
 
-Xb_hist = np.zeros((time_steps, num_paths, state_dim))
-Xu_hist = np.zeros((time_steps, num_paths, state_dim))
+    while not np.all(done):
 
-# initialize both processes identicall
-Xb_hist[0] = X_real_val[0]
-Xu_hist[0] = X_real_val[0]
+        idx = np.where(~done)[0]
+        n_left = len(idx)
+
+        proposal = rng.multivariate_normal(
+            mean=np.zeros(state_dim),
+            cov=Sigma,
+            size=n_left
+        ) + mean_next[idx]
+
+        valid = np.all((proposal >= 0) & (proposal <= 1), axis=1)
+
+        accepted[idx[valid]] = proposal[valid]
+        done[idx[valid]] = True
+
+    return accepted
 
 
-for t in range(1, time_steps):
-    np.random.seed(t)
-    noise = np.random.multivariate_normal(
-        mean=np.zeros(state_dim),
-        cov=Sigma,
-        size=num_paths
-    )
+def run_entire_simulation(dataset_id, n_sel_features, which_bias = 'FSMR'):
 
-    A_t = compute_A_from_X(X_biased, bias_strength)
+    save_dir = Path(__file__).resolve().parents[1] / "all_data_files"
 
-    # biased process
-    mu = X_biased.mean(axis=0)              
-    sd = X_biased.std(axis=0, ddof=1)
+    ###333 do like this: use real data as initial state and match dimensions
+    # mice, RNAseq data from blood and muscle , 6-30 weeks,  ~15-20 observationsper time  point
+    #dataset_id = 'GSE132741' 
+
+    # rats, methylaiton 
+    #dataset_id = 'GSE161141' 
+
+    # mice, methylation 0.67-35 months, 6 observations per time point
+    #dataset_id =  'GSE80672'
+
+
+    #  load real data, shape [time x Patients x Genes]
+    #X_real_val = np.load(f"X_real_val_30_{dataset_id}.npy")
+
+    X_real_val = np.load(f"all_data_files/X_real_val_{n_sel_features}_{dataset_id}.npy")
     
-    # try different drift approach
-    b_t = - drift_strength * (X_biased - mu)
-    #b_t = drift_strength * (mu / (sd + 1e-12)) # was like this  # drift direction
-    # damage (is not needed probably)
-    D_t += t
+    time_steps, num_paths, state_dim = X_real_val.shape
+    # ---------------- parameters ----------------
+    #state_dim   = 5
+    ## age is modelled up to a 100 years
+    #time_steps  = 100 # 100
+    #num_paths   = 1000
 
-    X_biased = X_biased - (X_biased @ A_t.T) + b_t + noise
-    ##X_biased = X_biased - (X_biased @ A_t.T) + noise
+    scale = scale = (100 / n_sel_features)**0.5  #1 + 0.35 * np.exp(-(n_sel_features - 5) / 20)
+
+    bias_strength = 1 * scale
+    drift_strength = 1.0 * scale
+
+    """ bias_strength = 0.8 * (100 / n_sel_features)**0.25 #10 #/ time_steps # 400
+    #drift_strength = 0.6 #400/time_steps
     
-    ######################
-    # unbiased reference
-    X_unbiased = X_unbiased + noise
-
-    # idea 4: store full trajectories
-    Xb_hist[t] = X_biased
-    Xu_hist[t] = X_unbiased
+    drift_strength =  1 * (100 / n_sel_features)**0.25 #0.6 * (100 / n_sel_features)**0.25 """
     
+    noise_scale = 1.0 / state_dim
 
-# normalize 0-1
-Xb_hist[1:] = minmax(Xb_hist[1:]) # change sigmoid for minmax
-Xu_hist[1:] = minmax(Xu_hist[1:])
+    power = 0.5
+    # -------------------------------------------
+    #### damage
+    D_t = 0
 
-##############  EXPERIMENT 2 ########################33
-############### TRANSITION PROBABILITY ESTIMATION #####
-tr_step =  int(0.8 * time_steps)
+    # identity 2D matrix
+    Sigma = noise_scale * np.eye(state_dim)
+    #np.random.seed(SEED)
+    X_0 = np.random.randn(num_paths, state_dim)
 
-future_steps = time_steps-tr_step
+    X_biased   = X_0.copy()
+    X_unbiased = X_0.copy()
 
-# build (X_t, X_{t+1}) pairs
-def make_pairs(X_hist):
-    # X_hist has shape (time_steps, num_paths, state_dim)
-    X_t  = X_hist[:-1].reshape(-1, state_dim)
-    X_t1 = X_hist[1:].reshape(-1, state_dim)
-    return X_t, X_t1
 
-# take 80% for training, leave 20% for validation
-Xu_t, Xu_t1 = make_pairs(Xu_hist[:tr_step])
-Xb_t, Xb_t1 = make_pairs(Xb_hist[:tr_step])
+    # Discretization
+    def bin_states(X, bin_width):
+        """
+        Map continuous states X (n, d) to discrete bin indices (n, d) by rounding to grid.
+        """
+        return np.floor(X / bin_width).astype(np.int64)
 
-aa = 1
+    def rows_to_tuples(B):
+        """
+        Convert (n, d) integer array to a set of tuples for hashing/unique counting.
+        """
+        return set(map(tuple, B))
+    # ------------------------------------------------------------
 
-# ============================================================
-# 1) UNBIASED KERNEL
-# Model:
-#   X_{t+1}^u ~ N(x, Sigma_u_hat)
-# so estimate Sigma from increments
-# ============================================================
+    # ------------------ Idea 4: store full trajectories ------------------
 
-increments_u = Xu_t1 - Xu_t
-Sigma_u_hat = np.cov(increments_u, rowvar=False)
+    Xb_hist = np.zeros((time_steps, num_paths, state_dim))
+    Xu_hist = np.zeros((time_steps, num_paths, state_dim))
 
-print("Estimated covariance for unbiased kernel:")
-print(Sigma_u_hat)
+    # initialize both processes identicall
+    Xb_hist[0] = X_real_val[0]
+    Xu_hist[0] = X_real_val[0]
 
-# Generate future unbiased trajectories starting from last observed state
-def generate_future_states(Xu_hist, x_mean, sigma_hat):
-    Xu_future = np.zeros((future_steps, num_paths, state_dim))
-    Xu_current = Xu_hist[-1].copy()
+    # compute population mean globally
+    # earliest age or oldest age?
+    # try oldest
+    mu_global = X_real_val[0].mean(axis=0)
 
-    for h in range(future_steps):
-        Xu_next = np.zeros_like(Xu_current)
+    for t in range(1, time_steps):
+        #np.random.seed(t*3)
+
+        # transofrm to 0-1
+        #X_biased = logit(X_biased)
+        #X_unbiased = logit(X_biased)
+
+        noise = np.random.multivariate_normal(
+            mean=np.zeros(state_dim),
+            cov=Sigma,
+            size=num_paths
+        )
+
+        A_t = compute_A_from_X(X_biased, bias_strength) # was X_biased, buttt
+
+        # biased process
+        mu = mu_global #X_biased.mean(axis=0)              
+        sd = X_biased.std(axis=0, ddof=1)
         
-        for i in range(num_paths):
-            np.random.seed(i)
-            Xu_next[i] = np.random.multivariate_normal(
-                mean=Xu_current[i],
-                cov=sigma_hat
-            )
+        # try different drift approach
+        #b_t = drift_strength * (mu - X_biased)
+       
+       
+        # using this        
+        b_t = drift_strength * (X_biased - mu) #was like thaaaaaaat
+       
+       
+        #b_t = drift_strength * (mu / (sd + 1e-12)) # was like this  # drift direction
+        # damage (is not needed probably)
+        #D_t += t
+
+        #X_biased = X_biased + b_t + noise
+        ##X_biased = X_biased - (X_biased @ A_t.T) + noise
+
+        ##### new idea
+        #diff = mu - X_biased
+
+        # nonlinear drift: large deviations are corrected more strongly
+        #b_t = drift_strength * np.sign(diff) * np.abs(diff)**power
+        #X_biased = X_biased + b_t + noise
         
-        Xu_current = Xu_next
-        Xu_future[h] = Xu_current
+
+        # try this: instead of clipping, sample from truncated normal, then its within [0, 1]
+        if which_bias == 'FSMR':
+            mean_next_b = X_biased - (X_biased @ A_t.T) + b_t
         
-    return Xu_future
-    
-    
-# test and train size
-steps_train = tr_step
-Xu_future = generate_future_states(Xu_hist, 0, Sigma_u_hat)
+        elif which_bias == 'LMR':
+            mean_next_b = X_biased + b_t
 
-Xu_val = Xu_hist.copy() #[80:]
-Xu_future_all = Xu_hist.copy()
-Xu_future_all[steps_train:] = Xu_future
+        elif which_bias == 'NMR':
+            mean_next_b = X_biased - (X_biased**2) + b_t
 
-# save 
-np.save("X_unbiased_val.npy", Xu_val)
-np.save("X_unbiased_pred.npy", Xu_future_all)
+        elif which_bias == 'FS':
+            mean_next_b = X_biased - (X_biased @ A_t.T)     
 
-########33 BIASED KERNEL  #####3
-####3 learn the avergae change using linear regression
-###############################3
+        
 
-X_design = np.hstack([np.ones((Xb_t.shape[0], 1)), Xb_t])   # shape (N, 1+d)
-
-# fit linear regression (least-squares) for all outputs
-B_hat, _, _, _ = np.linalg.lstsq(X_design, Xb_t1, rcond=None) # return x, res, rank, singular values
-# B_hat shape: (1 + state_dim, state_dim)
-
-intercept_b = B_hat[0]      # shape (state_dim,)
-A_b_hat     = B_hat[1:]     # shape (state_dim, state_dim)
-
-def m_hat(x):
-    # x can be shape (n, d) or (d,)
-    x = np.atleast_2d(x)
-    # linear regression equation, substitute the learned parameters
-    return x @ A_b_hat + intercept_b
-
-# Residuals and covariance
-residuals_b = Xb_t1 - m_hat(Xb_t)
-Sigma_b_hat = np.cov(residuals_b, rowvar=False)
-
-############# generate future states
-
-# Generate future trajectories starting from last observed state
-Xb_future = np.zeros((future_steps, num_paths, state_dim))
-Xb_current = Xb_hist[-1].copy()
-
-for t in range(future_steps):
-    mean_next = m_hat(Xb_current)  # shape (num_paths, state_dim)
-    np.random.seed(t)
-    noise_b = np.random.multivariate_normal(
-        mean=np.zeros(state_dim),
-        cov=Sigma_b_hat,
-        size=num_paths
-    )
-    Xb_current = mean_next + noise_b
-    Xb_future[t] = Xb_current
-
-############## ...DONE ######################
-
-# test and train size
-steps_train = tr_step
-#Xb_future = generate_future_states(Xu_hist, 0, Sigma_u_hat)
-
-Xb_val = Xb_hist.copy() #[80:]
-Xb_future_all = Xb_hist.copy()
-Xb_future_all[steps_train:] = Xb_future
-
-# save 
-np.save("X_biased_val.npy", Xb_val)
-np.save("X_biased_pred.npy", Xb_future_all)
+        ##### to tets a few options 
+        #1. mean_next_b_1 = X_biased - (X_biased @ A_t.T) + b_t
+        #2. mean_next_b_2 = X_biased + b_t 
+        #3. mean_next_b_3 = X_biased - (X_biased**2) + b_t
+        #4. mean_next_b_3 = X_biased - (np.sqrt(X_biased)) + b_t
 
 
-#plot_feature_histograms(Xu_val, Xu_future_all, 'UNBIASED', time_points=[13, 14, 15])
-#plot_feature_histograms(Xb_val, Xb_future_all, 'BIASED', time_points=[13, 14, 15])
-
-# check accuracy    
-
-#plot_distribution_error(Xb_val, Xb_future_all, 'BIASED',  steps_train, ['f1', 'f2', 'f3', 'f4', 'f5'])
-#kernel_acc_b = evaluate_kernel(Xb_val, Xb_future_all, True, 'BIASED', steps_train)
-
-aa = 1
+        X_biased = sample_truncated_normal(
+        mean_next_b,
+        Sigma
+      )
 
 
+        #X_biased = X_biased - (X_biased @ A_t.T) + b_t + noise # was like thaaaaat
+        #X_biased = np.clip(X_biased, 0, 1)
+        
+        #X_biased = np.minimum(np.abs(X_biased), 1)
 
- 
+        #X_biased = X_biased - (X_biased**2) + b_t + noise 
+        #X_biased = X_biased - np.sqrt(X_biased) + b_t + noise
+        
+        
+        ######################
+        # unbiased reference
+        mean_next_u = X_unbiased
+
+        X_unbiased = sample_truncated_normal(
+            mean_next_u,
+            Sigma
+        )
+        #X_unbiased = X_unbiased + noise
+        #X_unbiased = np.clip(X_unbiased, 0, 1)
+        
+        
+        #X_unbiased = np.minimum(np.abs(X_unbiased), 1)
+
+        # idea 4: store full trajectories
+        Xb_hist[t] = X_biased
+        Xu_hist[t] = X_unbiased
+
+
+    aa = 1
+    # normalize 0-1
+    #Xb_hist[1:] = minmax(Xb_hist[1:]) # change sigmoid for minmax
+    #Xu_hist[1:] = minmax(Xu_hist[1:])
+
+    ##############  EXPERIMENT 2 ########################33
+    ############### TRANSITION PROBABILITY ESTIMATION #####
+
+    # ============================================================
+    # 1) UNBIASED KERNEL
+    # Model:
+    #   X_{t+1}^u ~ N(x, Sigma_u_hat)
+    # so estimate Sigma from increments
+    # ============================================================
+
+    Xu_val = Xu_hist.copy() #[80:]
+    # save 
+    np.save("all_data_files/X_unbiased_val.npy", Xu_val)
+
+    ########33 BIASED KERNEL  #####3
+
+    Xb_val = Xb_hist.copy() #[80:]
+
+    # save 
+    np.save(f"all_data_files/X_biased_val_{which_bias}.npy", Xb_val)
+    #np.save("all_data_files/X_biased_pred.npy", Xb_future_all)
