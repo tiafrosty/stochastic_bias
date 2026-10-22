@@ -127,6 +127,51 @@ def cumulative_feature_range(X):
 
     return range_curve, feature_ranges_time
 
+
+def evaluate_exploration_full(X_biased):
+
+    time_steps, n_obs, state_dim = X_biased.shape
+
+    noise_scale = 1.0 / state_dim
+    bin_width = np.sqrt(noise_scale) / state_dim
+
+    # Each individual has its own set of visited profiles
+    visited = [set() for _ in range(n_obs)]
+
+    visited_size = np.zeros(time_steps, dtype=int)
+    new_bins = np.zeros(time_steps, dtype=int)
+    repeat_rate = np.zeros(time_steps)
+
+    for t in range(time_steps):
+
+        # Discretize the full methylation matrix
+        B = bin_states(X_biased[t], bin_width)
+
+        total_new = 0
+
+        for i in range(n_obs):
+
+            # Entire CpG profile is one state
+            current_state = tuple(B[i, :])
+
+            if current_state not in visited[i]:
+                total_new += 1
+
+            visited[i].add(current_state)
+
+        if t > 0:
+            visited_size[t] = sum(len(v) for v in visited)
+            new_bins[t] = total_new
+
+            # Total number of profile observations up to time t
+            total_visits = (t + 1) * n_obs
+
+            repeat_rate[t] = (
+                1.0 - visited_size[t] / total_visits
+            )
+
+    return visited_size, new_bins, repeat_rate
+
 # here we loop over a time series
 def evaluate_exploration(X_biased):
         
@@ -213,10 +258,14 @@ def evaluate_exploration(X_biased):
 
             total_new += states_i
         
-        new_bins_biased[t] = total_new
-        if t > 0:
-
+        #new_bins_biased[t] = total_new # was like this
+        if t > 0: # maybe comment this out, so the visited states at time 0 is not 0 but how many we visited in the first slot
+            # no should be 0
+            
+            # state growth
             visited_size_biased[t] = sum(len(v) for v in visited_biased)
+            # exploration rate
+            new_bins_biased[t] = total_new
         
         # ---- Idea 1 & 2: visited-set size + EXPLORATION curves ---
         # # Obs! I chaneghd discreteization method
@@ -259,7 +308,7 @@ def evaluate_exploration(X_biased):
     # fix the first element in exploration
     #visited_size_biased[0] = visited_size_biased[1]
         
-    return visited_size_biased, new_bins_biased, repeat_rate_biased,
+    return visited_size_biased, new_bins_biased, repeat_rate_biased
     
 
 def evaluate_exploration_clustered(X, kmeans):

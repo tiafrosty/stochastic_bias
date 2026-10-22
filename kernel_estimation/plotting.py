@@ -10,7 +10,93 @@ from sklearn.linear_model import Ridge, MultiTaskLasso, MultiTaskElasticNet
 
 import os
 
-# this is to evaluate performance across models (ridge, elnet, lasso)
+# this is to evaluat
+# e performance across models (ridge, elnet, lasso)
+
+### eigen values and drift heatmap
+def plot_eigenvals(eigvals_over_bootstrap, dataset_id, n_genes,  save_dir="plots"):
+
+    E = np.concatenate(eigvals_over_bootstrap)
+    plt.figure(figsize=(7, 5))
+
+    plt.hist(
+        E,
+        bins=30,
+        color="darkorange",
+        edgecolor="black",
+        linewidth=2.5
+    )
+
+    plt.axvline(
+        1,
+        color="red",
+        linestyle="--",
+        linewidth=3
+    )
+
+    plt.title(f"Dataset {dataset_id}, {n_genes} genes", fontsize=25)
+    plt.xlabel("Eigenvalue magnitude", fontsize=18)
+    plt.ylabel("Frequency", fontsize=18)
+
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+
+    plt.tick_params(
+        axis='both',
+        which='major',
+        width=2.5,
+        length=8,
+        labelsize=16
+    )
+
+    for spine in plt.gca().spines.values():
+        spine.set_linewidth(2.5)
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(save_dir, f"eigvals_{dataset_id}_{n_genes}.png"),
+        dpi=300,
+        bbox_inches="tight",
+    )
+    #plt.show()
+
+def plot_drift_heatmap(A_drift, dataset_id, state_dim):
+    plt.figure(figsize=(6, 5))
+
+    vmax = np.max(np.abs(A_drift))
+
+    im = plt.imshow(
+        A_drift,
+        cmap="RdBu_r",
+        vmin=-vmax,
+        vmax=vmax,
+        interpolation="nearest",
+        aspect="equal"
+    )
+
+    cbar = plt.colorbar(im)
+    cbar.set_label("Drift coefficient", fontsize=14)
+    cbar.ax.tick_params(labelsize=12, width=2, length=5)
+    cbar.outline.set_linewidth(2)
+
+    plt.title(f"Dataset {dataset_id}, {state_dim} genes", fontsize=18)
+    plt.xlabel("Gene", fontsize=16)
+    plt.ylabel("Gene", fontsize=16)
+
+    plt.xticks(np.arange(state_dim), fontsize=12)
+    plt.yticks(np.arange(state_dim), fontsize=12)
+
+    plt.tick_params(axis='both', which='major',
+                    width=2, length=6, labelsize=12)
+
+    for spine in plt.gca().spines.values():
+        spine.set_linewidth(2)
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 def plot_all_model_errors(avg_errors_models, dataset_id, save_dir="plots"):
     os.makedirs(save_dir, exist_ok=True)
@@ -56,7 +142,7 @@ def plot_all_model_errors(avg_errors_models, dataset_id, save_dir="plots"):
                 label=model_name.replace("_", " ").title(),
             )
 
-        ax.set_title(title, fontsize=16)
+        ax.set_title(title, fontsize=22)
         ax.set_xlabel("Time", fontsize=12)
         ax.grid(alpha=0.3)
 

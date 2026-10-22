@@ -208,7 +208,7 @@ def all_bias_plots_multi(X_b,
         label="Real"
     )
 
-    ax.set_title("Visited-state growth", fontsize=title_size)
+    ax.set_title("Visited-state growth G(t)", fontsize=title_size)
     ax.set_xlabel("Time step", fontsize=label_size)
     ax.set_ylabel("Unique states", fontsize=label_size)
     ax.grid(alpha=0.3)
@@ -244,7 +244,7 @@ def all_bias_plots_multi(X_b,
         label="Real"
     )
 
-    ax.set_title("Exploration rate", fontsize=title_size)
+    ax.set_title("Exploration rate E(t)", fontsize=title_size)
     ax.set_xlabel("Time step", fontsize=label_size)
     ax.set_ylabel("# new states", fontsize=label_size)
     ax.grid(alpha=0.3)
@@ -280,7 +280,7 @@ def all_bias_plots_multi(X_b,
         label="Real"
     )
 
-    ax.set_title("Repeat rate", fontsize=title_size)
+    ax.set_title("Repeat rate R(t)", fontsize=title_size)
     ax.set_xlabel("Time step", fontsize=label_size)
     ax.set_ylabel("Repeat rate", fontsize=label_size)
     ax.grid(alpha=0.3)

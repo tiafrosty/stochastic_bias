@@ -14,11 +14,10 @@ import subprocess
 import sys
 
 dataset_ids = [
-    #"GSE164127",  # bats methylation
-    #"GSE223748",  # cross-species mammalian methylation
-    #"GSE120132",  # mouse kidney methylation
+    "GSE164127",  # bats methylation
+    "GSE120132"  # mouse kidney methylation
     "GSE161141"  # rat methylation
-    #"GSE80672"    # mouse methylation
+   "GSE80672"    # mouse methylation
 ]
 
 for cur_dataset in dataset_ids:

@@ -82,7 +82,7 @@ def run_entire_simulation(dataset_id, n_sel_features, which_bias = 'FSMR'):
     #time_steps  = 100 # 100
     #num_paths   = 1000
 
-    scale = scale = (100 / n_sel_features)**0.5  #1 + 0.35 * np.exp(-(n_sel_features - 5) / 20)
+    scale =  (100 / n_sel_features)**0.5  #1 + 0.35 * np.exp(-(n_sel_features - 5) / 20)
 
     bias_strength = 1 * scale
     drift_strength = 1.0 * scale
@@ -149,16 +149,22 @@ def run_entire_simulation(dataset_id, n_sel_features, which_bias = 'FSMR'):
             size=num_paths
         )
 
-        A_t = compute_A_from_X(X_biased, bias_strength) # was X_biased, buttt
+        A_t = compute_A_from_X(X_0, bias_strength) # was X_biased, buttt # need X_0, not X_t
+        #A_t = compute_A_from_X(X_biased, bias_strength) 
 
         # biased process
         mu = mu_global #X_biased.mean(axis=0)              
         sd = X_biased.std(axis=0, ddof=1)
         
         # try different drift approach
-        #b_t = drift_strength * (mu - X_biased)
+        # mean-reverting: this is weaker
+        # b_t = drift_strength * (mu - X_biased)
+
+        # mean-repelling 
+        #b_t = drift_strength * (X_biased - mu)
+
        
-       
+        
         # using this        
         b_t = drift_strength * (X_biased - mu) #was like thaaaaaaat
        
@@ -189,7 +195,7 @@ def run_entire_simulation(dataset_id, n_sel_features, which_bias = 'FSMR'):
             mean_next_b = X_biased - (X_biased**2) + b_t
 
         elif which_bias == 'FS':
-            mean_next_b = X_biased - (X_biased @ A_t.T)     
+            mean_next_b = X_biased - (X_biased @ A_t.T)   
 
         
 
@@ -198,6 +204,7 @@ def run_entire_simulation(dataset_id, n_sel_features, which_bias = 'FSMR'):
         #2. mean_next_b_2 = X_biased + b_t 
         #3. mean_next_b_3 = X_biased - (X_biased**2) + b_t
         #4. mean_next_b_3 = X_biased - (np.sqrt(X_biased)) + b_t
+    
 
 
         X_biased = sample_truncated_normal(

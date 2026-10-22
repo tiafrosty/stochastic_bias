@@ -13,7 +13,7 @@ from geo_data_preprocess import *
 
 import sys 
 sys.path.append(str(Path(__file__).resolve().parents[2]))
-from common.common_modules import sample_truncated_normal
+from common.common_modules import sample_truncated_normal, sample_truncated_normal_with_correlation, sample_truncated_normal_gibbs
 
 from scipy.stats import truncnorm
 
@@ -45,8 +45,9 @@ def p_value_over_runs(all_errors, key_b, key_u):
     u = np.array([e[key_u].mean() for e in all_errors])
 
     # one-sided: biased error < unbiased error
-    res = ttest_rel(b, u)
-    p = res.pvalue / 2 if b.mean() < u.mean() else 1 - res.pvalue / 2
+    #res = ttest_rel(b, u)
+    res = ttest_rel(b, u, alternative='less') # H1: b < u
+    p = res.p_value #res.pvalue / 2 if b.mean() < u.mean() else 1 - res.pvalue / 2
 
     return p
 
@@ -155,72 +156,46 @@ def make_pairs(X_hist):
     return X_t, X_t1
 
 
-def estimate_kernel_biased_drift(Xb_hist, Xb_t, Xb_t1, future_steps,my_model,  seed=None):
+def estimate_kernel_biased_drift(Xb_hist, Xb_t, Xb_t1, future_steps,my_model,  dataset_id, seed=None):
 
     rng = np.random.default_rng(seed)
 
+    # NOte! now, Xb_host is only training
     T, num_paths, state_dim = Xb_hist.shape
 
     # learn drift: delta = X_{t+1} - X_t
     delta = Xb_t1 - Xb_t
-    
-    ##################
-    # new new idea: elastic net
-    ######
 
-    #poly = PolynomialFeatures(
-    #    degree=2,
-    #    include_bias=False
-    #)
-
-    #X_poly = poly.fit_transform(Xb_t)
-
-    model = my_model #MultiTaskLasso(
-    #alpha=1e-3,
-    #max_iter=10000,
-    #random_state=0
-#)
-
-
-    #model = Ridge(
-    #alpha=1.0,
-    #fit_intercept=True
-#)
-
-    #model = MultiTaskElasticNet(
-    #    alpha=1e-2,
-    #    l1_ratio=0.5,
-    #    max_iter=10000,
-    #    random_state=0
-    #)
+    model = my_model 
 
     model.fit(Xb_t, delta)
 
+    # check how close the sampled mean is to the estimated mean
+    # this is because truncation shifts the mean
+    estimated_means = []
+    truncated_means = []
+
     def drift_hat(x):
         x = np.atleast_2d(x)
-        #return model.predict(poly.transform(x))
         return model.predict(x)
-
-    #### new idea: quadratic regression
-    #model = make_pipeline(
-    #PolynomialFeatures(degree=2, include_bias=False),
-    #Ridge(alpha=1.0, fit_intercept=True)
-    #Lasso(alpha=1e-3, max_iter=1000)
-    #)
-
-    #model.fit(Xb_t, delta)
-
-    #def drift_hat(x):
-    #    x = np.atleast_2d(x)
-    #    return model.predict(x)
     
     #################################
 
     residuals = delta - drift_hat(Xb_t)
+
+    # estimate eigenvalues
+    A_drift = model.coef_
+    A_update =A_drift + np.eye(state_dim)
+
+    eigvals = np.abs(np.linalg.eigvals(A_update))
+
+
     Sigma_hat = LedoitWolf().fit(residuals).covariance_
 
     Xb_future = np.zeros((future_steps, num_paths, state_dim))
     Xb_current = Xb_hist[-1].copy()
+
+    n_mc = 200
 
     for t in range(future_steps):
 
@@ -228,17 +203,32 @@ def estimate_kernel_biased_drift(Xb_hist, Xb_t, Xb_t1, future_steps,my_model,  s
 
         mean_next = Xb_current + mean_delta
 
-        Xb_current = sample_truncated_normal(
+        ##### check if the error is big
+        mu = mean_next.mean(axis=0)
+        mc = sample_truncated_normal_gibbs(
+            np.tile(mu, (n_mc, 1)), Sigma_hat
+        )
+
+        estimated_means.append(mu)
+        truncated_means.append(mc.mean(axis=0))
+
+        Xb_current = sample_truncated_normal_gibbs(
             mean_next,
             Sigma_hat
         )
 
         Xb_future[t] = Xb_current
+        ################
+
+            #####################
 
     steps_train = int(0.8 * Xb_hist.shape[0])
-    Xb_future_all = np.concatenate([Xb_hist[:steps_train], Xb_future])
+    Xb_future_all = np.concatenate([Xb_hist, Xb_future])
 
-    return Xb_future_all
+    estimated_means = np.concatenate(estimated_means)
+    truncated_means = np.concatenate(truncated_means)
+
+    return Xb_future_all, eigvals, estimated_means, truncated_means
 
 def estimate_kernel_biased(Xb_hist, Xb_t, Xb_t1, future_steps, seed = None):
     
@@ -324,7 +314,7 @@ def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps, seed=None):
         for h in range(future_steps):
             mean_next = Xu_current
 
-            Xu_current = sample_truncated_normal(
+            Xu_current = sample_truncated_normal_gibbs(
             mean_next,
             sigma_hat
         )
@@ -338,8 +328,7 @@ def estimate_kernel_unbiased(Xu_hist, Xu_t, Xu_t1, future_steps, seed=None):
     Xu_future = generate_future_states(Xu_hist, Sigma_u_hat)
 
     Xu_val = Xu_hist.copy() #[80:]
-    Xu_future_all = Xu_hist.copy()
-    Xu_future_all[steps_train:] = Xu_future
+    Xu_future_all = np.concatenate([Xu_hist, Xu_future], axis=0)
 
     return Xu_future_all
 
@@ -780,7 +769,7 @@ def evaluate_kernel_scaled(dataset_id, X_val, X_sim_biased, X_sim_unbiased, plot
         plt.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}_{d}.png"), dpi=300)
-        plt.show()
+        #plt.show()
 
 
 def compute_kernel_scaled_errors(
@@ -821,7 +810,11 @@ def compute_kernel_scaled_errors(
         mu_b = X_sim_biased[t].mean(axis=0)
         cov_b = np.cov(X_sim_biased[t], rowvar=False)
 
-        mean_err_b[t] = np.linalg.norm(mu_val - mu_b) / (np.linalg.norm(mu_val) + 1e-8)
+        mean_err_b[t] =  np.linalg.norm(mu_val - mu_b) / (np.linalg.norm(mu_val) + 1e-8) # np.sqrt(np.mean((mu_val - mu_b) ** 2))
+
+        #print('real ', mu_val)
+        #print('based', mu_b)
+ #np.linalg.norm(mu_val - mu_b) / (np.linalg.norm(mu_val) + 1e-8)
         cov_err_b[t] = np.linalg.norm(cov_val - cov_b, "fro") / (
             np.linalg.norm(cov_val, "fro") + 1e-8
         )
@@ -831,7 +824,8 @@ def compute_kernel_scaled_errors(
         mu_u = X_sim_unbiased[t].mean(axis=0)
         cov_u = np.cov(X_sim_unbiased[t], rowvar=False)
 
-        mean_err_u[t] = np.linalg.norm(mu_val - mu_u) / (np.linalg.norm(mu_val) + 1e-8)
+        mean_err_u[t] =  np.linalg.norm(mu_val - mu_u) / (np.linalg.norm(mu_val) + 1e-8) #np.sqrt(np.mean((mu_val - mu_u) ** 2))
+
         cov_err_u[t] = np.linalg.norm(cov_val - cov_u, "fro") / (
             np.linalg.norm(cov_val, "fro") + 1e-8
         )
@@ -896,12 +890,12 @@ def plot_kernel_scaled_errors(
     plt.plot(t_axis, mean_err_b, color=colors[0], linewidth=3, linestyle="-",
              marker=markers[0], markersize=6, label="Mean (biased)")
     plt.plot(t_axis, mean_err_u, color=colors[0], linewidth=3, linestyle="--",
-             marker=markers[0], markersize=6, label="Mean (unbiased)")
+             label="Mean (unbiased)")
 
     plt.plot(t_axis, cov_err_b, color=colors[1], linewidth=3, linestyle="-",
              marker=markers[1], markersize=6, label="Cov (biased)")
     plt.plot(t_axis, cov_err_u, color=colors[1], linewidth=3, linestyle="--",
-             marker=markers[1], markersize=6, label="Cov (unbiased)")
+             label="Cov (unbiased)")
 
     #plt.plot(t_axis, wd_b, color=colors[2], linewidth=3, linestyle="-",
     #         marker=markers[2], markersize=6, label="WD (biased)")
@@ -912,7 +906,7 @@ def plot_kernel_scaled_errors(
              linestyle="-", marker=markers[3], markersize=6,
              label="Correlation (biased)")
     plt.plot(t_axis, a + corr_error_u * (b - a), color=colors[3], linewidth=3,
-             linestyle="--", marker=markers[3], markersize=6,
+             linestyle="--", 
              label="Correlation (unbiased)")
 
     if full_process:
@@ -928,7 +922,7 @@ def plot_kernel_scaled_errors(
     plt.tight_layout()
 
     plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}_{d}.png"), dpi=300)
-    plt.show()
+    #plt.show()
 
 
 
@@ -1047,4 +1041,4 @@ def evaluate_kernel_normalized(dataset_id, X_val, X_sim_biased, X_sim_unbiased, 
         plt.grid(alpha=0.3)
         plt.tight_layout()
         plt.savefig(os.path.join(save_dir, f"errors_scaled_{dataset_id}.png"), dpi=300)
-        plt.show()
+        #plt.show()

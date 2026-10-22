@@ -26,12 +26,9 @@ from kernel_estimation import *
 import stoch_sim_CHECK
 
 
-
-
 models_all = ['elastic_net', 'ridge', 'ridge', 'elastic_net']
 
 bias_terms = ['FSMR', 'LMR', 'NMR', 'FS']
-
 
 
 def run_comp_study_bias(
@@ -246,8 +243,12 @@ def run_comp_study_bias(
         )
 
 
-
 def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_kern = False, evaluate_model = False, which_bias = bias_terms[0]):
+
+    # check the error that comes with truncation
+    all_estimated_means = []
+    all_truncated_means = []
+
 
     save_dir = Path(__file__).resolve().parents[1] / "all_data_files"
     #project_dir = Path(__file__).resolve().parents[1]
@@ -294,12 +295,13 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
 
     n_bootstrap = 100
     n_kernel_runs = 1
+
+    eigvals_over_bootstrap = []
+
     for i in tqdm(range(n_bootstrap)):
         n_sel_features = n_features
         X_real_val = np.load(f"all_data_files/X_real_val_{n_sel_features}_{dataset_id}_boot{i}.npy")
 
-        if i == 79:
-            aa = 1
 
         # run simulation and locally save the simulated prcoesses
         
@@ -406,7 +408,7 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
             for cur_model in models:
 
                 X_pred_biased = estimate_kernel_biased_drift(
-                    X_real_val,
+                    X_real_val[:train_steps],
                     X_real_t,
                     X_real_t1,
                     future_steps,
@@ -415,7 +417,7 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
                 )
 
                 X_pred_unbiased = estimate_kernel_unbiased(
-                    X_real_val,
+                    X_real_val[:train_steps],
                     X_real_t,
                     X_real_t1,
                     future_steps,
@@ -435,8 +437,6 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
             all_errors_model.append(all_errors_this_model)
 
 
-
-
         if evaluate_kern:
 
             future_steps = T - train_steps
@@ -446,22 +446,30 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
 
             for r in range(n_kernel_runs):
 
-                X_pred_biased = estimate_kernel_biased_drift(
-                    X_real_val,
+                X_pred_biased, eigvals, estimated_means, truncated_means  = estimate_kernel_biased_drift(
+                    X_real_val[:train_steps],
                     X_real_t,
                     X_real_t1,
                     future_steps,
                     my_model= my_model, 
-                    seed=r
+                    seed=r,
+                    dataset_id = dataset_id
                 )
 
+                all_estimated_means.append(estimated_means)
+                all_truncated_means.append(truncated_means)
+
+
                 X_pred_unbiased = estimate_kernel_unbiased(
-                    X_real_val,
+                    X_real_val[:train_steps],
                     X_real_t,
                     X_real_t1,
                     future_steps,
                     seed=r
                 )
+
+                if dataset_id == 'GSE120132':
+                    aa = 1
 
                 errors_r = compute_kernel_scaled_errors(
                     X_real_val,
@@ -472,6 +480,7 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
                 )
 
                 all_errors_this_bootstrap.append(errors_r)
+                eigvals_over_bootstrap.append(eigvals)
 
             avg_errors_this_bootstrap = {}
 
@@ -537,7 +546,8 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
         plot_all_model_errors(avg_errors_models, dataset_id)
 
 
-
+        # plot eig vals over bootstrap runs
+        aa = 1
 
 
     if evaluate_bias:
@@ -578,16 +588,67 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
 
     if evaluate_kern:
 
+        
+
+        estimated = np.concatenate(all_estimated_means)
+        truncated = np.concatenate(all_truncated_means)
+
+        mae = np.mean(np.abs(truncated - estimated))
+        max_error = np.max(np.abs(truncated - estimated))
+
+
+        #estimated = np.mean(np.stack(all_estimated_means), axis=0)
+        #truncated = np.mean(np.stack(all_truncated_means), axis=0)
+
+        plt.figure(figsize=(6, 7))
+
+        plt.scatter(estimated, truncated, s=65, alpha=0.7)
+        plt.plot([0, 1], [0, 1], 'r--', linewidth=3)
+
+        plt.xlabel("Estimated mean", fontsize=20)
+        plt.ylabel("Mean after truncation", fontsize=20)
+
+        plt.title(
+            f"{dataset_id}, {n_sel_features} genes\nMAE = {mae:.4f}", #Max error = {max_error:.4f}
+            fontsize=25,
+            pad=15
+        )
+
+        plt.xticks(fontsize=17)
+        plt.yticks(fontsize=17)
+        plt.tick_params(axis='both', width=2, length=7)
+
+        ax = plt.gca()
+        for spine in ax.spines.values():
+            spine.set_linewidth(2)
+
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+        plt.gca().set_aspect('equal', adjustable='box')
+
+        #plt.tight_layout()
+        plt.subplots_adjust(left=0.17, right=0.97, bottom=0.12, top=0.86)
+        plt.savefig(
+            f"plots/truncation_mean_{dataset_id}_{n_sel_features}.pdf",
+            bbox_inches="tight",
+            dpi=300
+        )
+
 
     ### for t-test:
         error_pairs = {
-            "mean_err": ("mean_err_b", "mean_err_u"),
-            "cov_err": ("cov_err_b", "cov_err_u"),
-            "corr_err": ("corr_error_b", "corr_error_u"),
+            "Mean error": ("mean_err_b", "mean_err_u"),
+            "Covairance error": ("cov_err_b", "cov_err_u"),
+            "Correlation error": ("corr_error_b", "corr_error_u"),
         }
 
         #### plot
-        fig, axes = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
+        fig, axes = plt.subplots(3, 1, figsize=(9, 11), sharex=True)
+
+        axes[0].set_title(
+                f"{dataset_id}, {n_features} genes",
+                fontsize=27
+            )
 
         for ax, (name, (key_b, key_u)) in zip(axes, error_pairs.items()):
 
@@ -601,19 +662,51 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
                 for err in all_errors
             ])
 
-            ax.plot(err_b, label="Biased")
-            ax.plot(err_u, label="Unbiased")
+            ax.plot(
+                err_b,
+                label="Biased",
+                linewidth=2.5
+            )
 
-            ax.set_title(f'{name}, dataset {dataset_id}, {n_features} genes')
-            ax.set_ylabel("Average error")
-            ax.legend()
+            ax.plot(
+                err_u,
+                label="Unbiased",
+                linewidth=2.5
+            )
 
-        axes[-1].set_xlabel("Bootstrap replicate")
+            ax.set_ylabel(
+                f"{name}",
+                fontsize=16
+            )
 
+            ax.legend(
+                fontsize=13,
+                frameon=True
+            )
+
+            ax.tick_params(
+                axis='both',
+                which='major',
+                labelsize=12,
+                width=1.5,
+                length=6
+            )
+
+            # thicker axes
+            for spine in ax.spines.values():
+                spine.set_linewidth(1.5)
+
+        axes[-1].set_xlabel(
+            "Bootstrap run",
+            fontsize=18
+        )
+        #os.makedirs('plots', exist_ok=True)
         plt.tight_layout()
-        plt.show()
+        #plt.show()
+        plt.savefig(os.path.join('plots', f"bootstrap_errors_{dataset_id}_{n_features}.pdf"), bbox_inches="tight", dpi = 300)
 
-
+        eigvals_over_bootstrap = np.array(eigvals_over_bootstrap)
+        plot_eigenvals(eigvals_over_bootstrap, dataset_id, n_features)
         #results_file = save_dir / f"significance_results.txt"
         results_file =  data_dir / "prediction_error_tests.txt"
         #results_file = save_dir / f"prediction_error_tests.txt"
@@ -693,17 +786,32 @@ def run_all_datasets(dataset_id, n_features, evaluate_bias = False, evaluate_ker
     #evaluate_kernel_scaled(dataset_id, X_real_val, X_pred_biased, X_pred_unbiased, plot=True, steps_train=train_steps, full_process=False)
 
 dataset_ids = [
-   #"GSE164127",  # bats methylation
-   # "GSE120132",  # mouse kidney methylation
-    "GSE161141"  # rat methylation
-    #"GSE80672"    # mouse methylation
+   "GSE164127",  # bats methylation
+    "GSE120132",  # mouse kidney methylation
+    "GSE161141",  # rat methylation
+    "GSE80672"    # mouse methylation
 ]
 
-aa = 1
+
+
 # after I change anything in gene selecting method, i need to run all the datasets files and do preprocessing again 
 # to make sure i select the same subset if genes
 #subprocess.run([sys.executable, "run_all_data_files.py"])
 
+
+
+aa = 1
+    #run_all_datasets(cur_data_set, 100, evaluate_bias=True)
+
+
+#cur_data_set = dataset_ids[0]
+
+
+# ther file with t-test results, clear before simulaiton start
+data_dir = Path(__file__).resolve().parents[1] / "stochastic_bias/all_data_files"
+results_file =  data_dir / "prediction_error_tests.txt"
+with open(results_file, "w") as f:
+    pass
 
 for i in range(len(dataset_ids)):
     cur_data_set = dataset_ids[i] #in dataset_ids:
@@ -729,10 +837,7 @@ for i in range(len(dataset_ids)):
     run_comp_study_bias(cur_data_set, 30, evaluate_bias=1, plot_mean_trajectories=0, do_t_test=1)
     run_comp_study_bias(cur_data_set, 40, evaluate_bias=1, plot_mean_trajectories=0, do_t_test=1)
 
-    #run_all_datasets(cur_data_set, 100, evaluate_bias=True)
 
-
-#cur_data_set = dataset_ids[0]
 
 
 
